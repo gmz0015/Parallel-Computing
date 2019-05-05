@@ -7,19 +7,31 @@
 #define FAILURE 0
 #define SUCCESS !FAILURE
 
-#define USER_NAME "acw18mg"		//replace with your user name
+#define USER_NAME "acw18mg"
 
 #pragma warning(disable : 4996)
 
 void print_help();
-int process_command_line(int argc, char *argv[]); // process the arguments
-int readFile(); // read header and original pixel values from file
-int allocateMemory(); // allocate the two dimension arrays' memory
-int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); // run with CPU mode
-int runOPENMP(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); // run with OpenMP mode
-int writeBinary(); // write header and new pixel values to binary file
-int writePlainText(); // write header and new pixel values to plain text file
-int freeMemory(); // free memory
+
+// process the arguments
+int process_command_line(int argc, char *argv[]); 
+
+// read header and original pixel values from file
+int readFile(); 
+
+/* Allocate Memory */
+int allocateMemory(); 
+
+/* Run */
+int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); 
+int runOPENMP(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); 
+
+/* Write File */
+int writeBinary(); 
+int writePlainText(); 
+
+/* Free Memory */
+int freeMemory(); 
 
 typedef enum MODE { CPU, OPENMP, CUDA, ALL } MODE;
 typedef enum FORMAT { PPM_BINARY, PPM_PLAIN_TEXT } FORMAT;
@@ -56,11 +68,7 @@ int main(int argc, char *argv[]) {
 
 
 	if (process_command_line(argc, argv) == FAILURE) {
-		//return 1;
-
-		//Test (Remove when finished)
-		printf("arguments wrong!\n");
-		//return 0;
+		return 0;
 	}
 
 
@@ -219,13 +227,42 @@ int process_command_line(int argc, char *argv[]) {
 		print_help();
 		return FAILURE;
 	}
+	printf("Reading in Arguments...\n");
 
-	//first argument is always the executable name
+	// first argument is always the executable name
+	printf("Executable Name: %s\n", argv[0]);
 
-	//read in the non optional command line arguments
-	c = (unsigned int)atoi(argv[1]);
+	// read in the non optional command line arguments
+	printf("c: %s\n", argv[1]);
+	for (int i = 0; i < strlen(argv[1]); i++) {
+		if ((argv[1][i] >= 'a' && argv[1][i] <= 'z') || (argv[1][i] >= 'A' && argv[1][i] <= 'Z') || argv[1][i] == '-' || argv[1][i] == '.')
+		{
+			printf("==============================\nReading in Stop!\n");
+			fprintf(stderr, "Error: Wrong c argument. C should be any positive integer.\n");
+			printf("==============================\n");
+			return FAILURE;
+		}
+	}
+	if (atoi(argv[1]) == 0) {
+		printf("==============================\nReading in Stop!\n");
+		fprintf(stderr, "Error: Wrong c argument. C should not be zero.\n");
+		printf("==============================\n");
+		return FAILURE;
+	}
+	else {
+		if (atoi(argv[1]) % 2 == 0) {
+			c = (unsigned int)atoi(argv[1]);
+		}
+		else {
+			printf("==============================\nReading in Stop!\n");
+			fprintf(stderr, "Error: Wrong c argument. C should a power of 2 number.\n");
+			printf("==============================\n");
+			return FAILURE;
+		}
+	}
+	
 
-	//TODO: read in the mode
+	// read in the mode
 	if (!strcmp(argv[2], "CPU"))
 		execution_mode = CPU;
 	else if (!strcmp(argv[2], "OPENMP"))
@@ -234,16 +271,18 @@ int process_command_line(int argc, char *argv[]) {
 		execution_mode = CUDA;
 	else if (!strcmp(argv[2], "ALL"))
 		execution_mode = ALL;
-	else
+	else {
 		fprintf(stderr, "Error: Wrong mode argument. Correct usage is CPU, OPENMP, CUDA or ALL.\n");
+		return FAILURE;
+	}
 
-	//TODO: read in the input image name
+	// read in the input image name
 	input_image_name = argv[4];
 
-	//TODO: read in the output image name
+	// read in the output image name
 	output_image_name = argv[6];
 
-	//TODO: read in any optional part 3 arguments
+	// read in any optional part 3 arguments
 	if (argc == 9)
 		if (!strcmp(argv[8], "PPM_BINARY"))
 			image_format = PPM_BINARY;

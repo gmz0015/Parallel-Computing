@@ -78,7 +78,16 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="kernel.cu" />
+    <None Include="2048x2048PlainText.ppm" />
+    <None Include="2048_output_example.ppm" />
+    <None Include="Dog2048x2048.ppm" />
+    <None Include="DogPlainText2048x2048.ppm" />
+    <None Include="Sheffield16x16.ppm" />
+    <None Include="Sheffield512x512.ppm" />
+    <None Include="SheffieldPlainText16x16.ppm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="mosaic.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -227,7 +227,7 @@ int process_command_line(int argc, char *argv[]) {
 		print_help();
 		return FAILURE;
 	}
-	printf("Reading in Arguments...\n");
+	printf("Read in Arguments...\n");
 
 	// first argument is always the executable name
 	printf("Executable Name: %s\n", argv[0]);
@@ -237,14 +237,14 @@ int process_command_line(int argc, char *argv[]) {
 	for (int i = 0; i < strlen(argv[1]); i++) {
 		if ((argv[1][i] >= 'a' && argv[1][i] <= 'z') || (argv[1][i] >= 'A' && argv[1][i] <= 'Z') || argv[1][i] == '-' || argv[1][i] == '.')
 		{
-			printf("==============================\nReading in Stop!\n");
+			printf("==============================\nRead in Stop!\n");
 			fprintf(stderr, "Error: Wrong c argument. C should be any positive integer.\n");
 			printf("==============================\n");
 			return FAILURE;
 		}
 	}
 	if (atoi(argv[1]) == 0) {
-		printf("==============================\nReading in Stop!\n");
+		printf("==============================\nRead in Stop!\n");
 		fprintf(stderr, "Error: Wrong c argument. C should not be zero.\n");
 		printf("==============================\n");
 		return FAILURE;
@@ -254,7 +254,7 @@ int process_command_line(int argc, char *argv[]) {
 			c = (unsigned int)atoi(argv[1]);
 		}
 		else {
-			printf("==============================\nReading in Stop!\n");
+			printf("==============================\nRead in Stop!\n");
 			fprintf(stderr, "Error: Wrong c argument. C should a power of 2 number.\n");
 			printf("==============================\n");
 			return FAILURE;
@@ -263,6 +263,7 @@ int process_command_line(int argc, char *argv[]) {
 	
 
 	// read in the mode
+	printf("Mode: %s\n", argv[2]);
 	if (!strcmp(argv[2], "CPU"))
 		execution_mode = CPU;
 	else if (!strcmp(argv[2], "OPENMP"))
@@ -272,26 +273,37 @@ int process_command_line(int argc, char *argv[]) {
 	else if (!strcmp(argv[2], "ALL"))
 		execution_mode = ALL;
 	else {
+		printf("==============================\nRead in Stop!\n");
 		fprintf(stderr, "Error: Wrong mode argument. Correct usage is CPU, OPENMP, CUDA or ALL.\n");
+		printf("==============================\n");
 		return FAILURE;
 	}
 
 	// read in the input image name
+	printf("Input Image Name: %s\n", argv[4]);
 	input_image_name = argv[4];
 
 	// read in the output image name
+	printf("Output Image Name: %s\n", argv[6]);
 	output_image_name = argv[6];
 
 	// read in any optional part 3 arguments
-	if (argc == 9)
+	if (argc == 9) {
+		printf("Read in Optional Part\n");
+		printf("output Image Format: %s\n", argv[8]);
 		if (!strcmp(argv[8], "PPM_BINARY"))
 			image_format = PPM_BINARY;
 		else if (!strcmp(argv[8], "PPM_PLAIN_TEXT"))
 			image_format = PPM_PLAIN_TEXT;
-		else
+		else {
+			printf("==============================\nRead in Stop!\n");
 			fprintf(stderr, "Error: Wrong image format argument. Correct usage is PPM_BINARY or PPM_PLAIN_TEXT.\n");
-
-	return SUCCESS;
+			printf("==============================\n");
+			return FAILURE;
+		}
+	}
+	else
+		return SUCCESS;
 }
 
 int readFile() {

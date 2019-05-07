@@ -16,7 +16,7 @@ As the assignment requires, I choose the outer loop parallelization which consum
 
 ## Limitations
 
-## Backup
+## DELETE BEFORE SUBMIT
 
 ```
 16 CPU -i 2048x2048PlainText.ppm -o 2048x2048PlainText_output.ppm -f PPM_PLAIN_TEXT

@@ -29,8 +29,8 @@ int allocateCUDAMemory(unsigned short **d_red_input, unsigned short **d_red_outp
 void checkCUDAError(const char*);
 
 /* Run */
-int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); 
-int runOPENMP(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp); 
+int runCPU(); 
+int runOPENMP(); 
 void runCUDA();
 
 void vec2matrix();
@@ -73,40 +73,22 @@ unsigned short **blue; // global blue values (two dimension[height][width])
   Parallel Outer Loop
 */
 int main(int argc, char *argv[]) {
-	unsigned short red_average = 0;
-	unsigned short blue_average = 0;
-	unsigned short green_average = 0;
-
-	clock_t begin, end;
 	double begin_openmp, end_openmp;
-
 
 	if (process_command_line(argc, argv) == FAILURE) {
 		return 0;
 	}
 
-
-
-	//TODO: read input image file (either binary or plain text PPM) 
+	// Read input image file (either binary or plain text PPM) 
 	readFile();
 
 	//TODO: execute the mosaic filter based on the mode
 	switch (execution_mode) {
 	case (CPU): {
-		//TODO: starting timing here
-		begin = clock();
+		// Calculate the average colour value
+		runCPU();
 
-		//TODO: calculate the average colour value
-		runCPU(&red_average, &green_average, &blue_average);
-
-		// Output the average colour value for the image
-		printf("CPU Average image colour red = %hu, green = %hu, blue = %hu \n", red_average, green_average, blue_average);
-
-		//TODO: end timing here
-		end = clock();
-		printf("CPU mode execution time took %.0f s and %.0f ms\n", (end - begin) / (float)CLOCKS_PER_SEC, ((end - begin) / (float)CLOCKS_PER_SEC)*1000.0);
-
-		//save the output image file (from last executed mode)
+		// Save the output image file (from last executed mode)
 		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
@@ -121,20 +103,10 @@ int main(int argc, char *argv[]) {
 		break;
 	}
 	case (OPENMP): {
-		//TODO: starting timing here
-		begin_openmp = omp_get_wtime();
+		// Calculate the average colour value
+		runOPENMP();
 
-		//TODO: calculate the average colour value
-		runOPENMP(&red_average, &green_average, &blue_average);
-
-		// Output the average colour value for the image
-		printf("OPENMP Average image colour red = %d, green = %d, blue = %d \n", red_average, green_average, blue_average);
-
-		//TODO: end timing here
-		end_openmp = omp_get_wtime();
-		printf("OPENMP mode execution time took %.0f s and %.0f ms\n", (end_openmp - begin_openmp), (end_openmp - begin_openmp)*1000.0);
-
-		//save the output image file (from last executed mode)
+		// Save the output image file (from last executed mode)
 		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
@@ -164,20 +136,11 @@ int main(int argc, char *argv[]) {
 		break;
 	}
 	case (ALL): {
-		// starting timing here
-		begin = clock();
+		/* CPU */
+		// Calculate the average colour value
+		runCPU();
 
-		// calculate the average colour value
-		runCPU(&red_average, &green_average, &blue_average);
-
-		// Output the average colour value for the image
-		printf("CPU Average image colour red = %d, green = %d, blue = %d \n", red_average, green_average, blue_average);
-
-		// end timing here
-		end = clock();
-		printf("CPU mode execution time took %.0f s and %.0f ms\n", (end - begin) / (float)CLOCKS_PER_SEC, ((end - begin) / (float)CLOCKS_PER_SEC)*1000.0);
-
-		//save the output image file (from last executed mode)
+		// Save the output image file (from last executed mode)
 		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
@@ -190,24 +153,28 @@ int main(int argc, char *argv[]) {
 		}
 
 
-
-		// read the file again for openmp
+		/* OPENMP */
 		readFile();
-
-		// starting timing here
-		begin_openmp = omp_get_wtime();
-
 		// calculate the average colour value
-		runOPENMP(&red_average, &green_average, &blue_average);
+		runOPENMP();
 
-		// Output the average colour value for the image
-		printf("OPENMP Average image colour red = %d, green = %d, blue = %d \n", red_average, green_average, blue_average);
+		// Save the output image file (from last executed mode)
+		switch (image_format) {
+		case (PPM_BINARY): {
+			writeBinary();
+			break;
+		}
+		case (PPM_PLAIN_TEXT): {
+			writePlainText();
+			break;
+		}
+		}
 
-		//end timing here
-		end_openmp = omp_get_wtime();
-		printf("OPENMP mode execution time took %.0f s and %.0f ms\n", (end_openmp - begin_openmp), (end_openmp - begin_openmp)*1000.0);
+		/* CUDA */
+		readFile();
+		runCUDA();
 
-		//save the output image file (from last executed mode)
+		// Save the output image file (from last executed mode)
 		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
@@ -231,160 +198,192 @@ int main(int argc, char *argv[]) {
 /*
   CUDA
 */
-__device__ void computeAverageCell(unsigned int *c, int start_point, unsigned short **d_input) {
-	for (int i = 0; i < *c; i++) {
-		printf("Line %d: ", i);
-		for (int j = 0; j < *c; j++) {
-			printf("%3d ", d_input[i][j]);
+
+__device__ unsigned long computeCell(unsigned int c, int start_point_row, int start_point_column, unsigned short **d_color) {
+	unsigned long average_return;
+	double average_pixel = 0;
+	int i, j;
+	for (i = 0; i < c; i++) {
+		for (j = 0; j < c; j++) {
+			average_pixel += d_color[start_point_row * c + i][start_point_column * c + j];
 		}
-		printf("\n");
 	}
+	average_return = average_pixel;
+	printf("%d-%d: %.0f\n", start_point_row, start_point_column, average_pixel);
+	average_pixel /= (c*c);
+	for (i = 0; i < c; i++) {
+		for (j = 0; j < c; j++) {
+			d_color[start_point_row * c + i][start_point_column * c + j] = (unsigned short) average_pixel;
+		}
+	}
+	return average_return;
 }
 
-__global__ void computeAverageAll(unsigned int *c, unsigned short **d_input, unsigned short **d_output)
-{
-	int start_point = threadIdx.x * *c;
-	printf("%d: %d\n", threadIdx.x, start_point);
-	int tempSum = 0;
-	for (int i = 0; i < *c; i++) {
-		for (int j = 0; j < *c; j++) {
-			tempSum += d_input[start_point + i][start_point + j];
-		}
-	}
+__device__ unsigned long *red_average;
+__device__ unsigned long *green_average;
+__device__ unsigned long *blue_average;
 
-	for (int i = 0; i < *c; i++) {
-		for (int j = 0; j < *c; j++) {
-			d_output[start_point + i][start_point + j] = tempSum / *c;
-		}
-	}
+__global__ void assignCell(unsigned int *c, unsigned short **d_red, unsigned short **d_green, unsigned short **d_blue)
+{
+	// threadIdx.x --- row
+	// threadIdx.y --- column
+	
+	printf("%d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, *red_average, *green_average, *blue_average);
+
+	*red_average += computeCell(*c, threadIdx.x, threadIdx.y, d_red);
+	*green_average += computeCell(*c, threadIdx.x, threadIdx.y, d_green);
+	*blue_average += computeCell(*c, threadIdx.x, threadIdx.y, d_blue);
+
+	printf("%d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, *red_average, *green_average, *blue_average);
 }
 
 
 void runCUDA()
 {
-	printf("=============== Start Run CUDA! ===============\n");
+	printf("\n=============== Start Run CUDA! ===============\n");
+	/* Set Clock */
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
 
 	// TODO remember to change
 	int size = (width / c) * (height / c);
 	unsigned int *d_c;
 	// Red
-	unsigned short **h_red_input = (unsigned short **)malloc(sizeof(unsigned short *) * height);
-	unsigned short **d_red_input;
-	unsigned short *d_red_input_data;
-	unsigned short **d_red_output;
+	unsigned short **h_red = (unsigned short **)malloc(sizeof(unsigned short *) * height);
+	unsigned short **d_red;
+	unsigned short *d_red_data;
 	//Green
-	unsigned short **h_green_input = (unsigned short **)malloc(sizeof(unsigned short *) * height);
-	unsigned short **d_green_input;
-	unsigned short *d_green_input_data;
-	unsigned short **d_green_output;
+	unsigned short **h_green = (unsigned short **)malloc(sizeof(unsigned short *) * height);
+	unsigned short **d_green;
+	unsigned short *d_green_data;
 	// Blue
-	unsigned short **h_blue_input = (unsigned short **)malloc(sizeof(unsigned short *) * height);
-	unsigned short **d_blue_input;
-	unsigned short *d_blue_input_data;
-	unsigned short **d_blue_output;
+	unsigned short **h_blue = (unsigned short **)malloc(sizeof(unsigned short *) * height);
+	unsigned short **d_blue;
+	unsigned short *d_blue_data;
 
-	unsigned long *h_red_average_output;
-	printf("width:%d, height:%d\n", width, height);
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
+	unsigned long h_red_average = 0;
+	//unsigned long *red_average;
+	unsigned long h_green_average = 0;
+	//unsigned long *green_average;
+	unsigned long h_blue_average = 0;
+	//unsigned long *blue_average;
 
 	/* Allocate Device Memory */
 	cudaMalloc((void **)&d_c, sizeof(unsigned int));
-	//allocateCUDAMemory(d_red_input, d_red_output, d_green_input, d_green_output, d_blue_input, d_blue_output);
 	// Red
-	cudaMalloc((void **)&d_red_input, sizeof(unsigned short**) * height);
-	cudaMalloc((void **)&d_red_input_data, sizeof(unsigned short) * height * width);
-	cudaMalloc((void **)&d_red_output, sizeof(unsigned short) * height);
+	cudaMalloc((void **)&d_red, sizeof(unsigned short**) * height);
+	cudaMalloc((void **)&d_red_data, sizeof(unsigned short) * height * width);
 	// Green
-	cudaMalloc((void **)&d_green_input, sizeof(unsigned short**) * height);
-	cudaMalloc((void **)&d_green_input_data, sizeof(unsigned short) * height * width);
-	cudaMalloc((void **)&d_green_output, sizeof(unsigned short) * height);
+	cudaMalloc((void **)&d_green, sizeof(unsigned short**) * height);
+	cudaMalloc((void **)&d_green_data, sizeof(unsigned short) * height * width);
 	// Blue
-	cudaMalloc((void **)&d_blue_input, sizeof(unsigned short**) * height);
-	cudaMalloc((void **)&d_blue_input_data, sizeof(unsigned short) * height * width);
-	cudaMalloc((void **)&d_blue_output, sizeof(unsigned short) * height);
+	cudaMalloc((void **)&d_blue, sizeof(unsigned short**) * height);
+	cudaMalloc((void **)&d_blue_data, sizeof(unsigned short) * height * width);
+	// Average
+	//cudaMalloc((void **)&red_average, sizeof(unsigned long));
+	//cudaMalloc((void **)&green_average, sizeof(unsigned long));
+	//cudaMalloc((void **)&blue_average, sizeof(unsigned long));
 	checkCUDAError("Memory allocation");
 
 	/* Allocate Host Memory */
-	//h_red_average_output = (unsigned long *)malloc(sizeof(long));
 	for (int i = 0; i < height; i++) {
-		h_red_input[i] = d_red_input_data + width * i;
-		h_green_input[i] = d_green_input_data + width * i;
-		h_blue_input[i] = d_blue_input_data + width * i;
+		// Input
+		h_red[i] = d_red_data + width * i;
+		h_green[i] = d_green_data + width * i;
+		h_blue[i] = d_blue_data + width * i;
 	}
 
 	/* Copy Host Input to Device Input */
 	// Red
-	cudaMemcpy(d_red_input, h_red_input, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_red_input_data, red_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_red, h_red, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_red_data, red_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
 	// Green
-	cudaMemcpy(d_green_input, h_green_input, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_green_input_data, green_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_green, h_green, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_green_data, green_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
 	// Blue
-	cudaMemcpy(d_blue_input, h_blue_input, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_blue_input_data, blue_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_blue, h_blue, sizeof(unsigned short *) * height, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_blue_data, blue_vector, sizeof(unsigned short) * height * width, cudaMemcpyHostToDevice);
 	// C
 	cudaMemcpy(d_c, &c, sizeof(unsigned int), cudaMemcpyHostToDevice);
+	// Average
+	cudaMemcpyToSymbol(red_average, &h_red_average, sizeof(unsigned long), cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(green_average, &h_green_average, sizeof(unsigned long), cudaMemcpyHostToDevice);
+	cudaMemcpyToSymbol(blue_average, &h_blue_average, sizeof(unsigned long), cudaMemcpyHostToDevice);
 	checkCUDAError("Input transfer to device");
 
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
 	// Single Block
-	dim3 blocksPerGridRed(1, 1, 1);
-	dim3 threadsPerBlockRed(size, 1, 1);
+	dim3 blocksPerGrid(1, 1, 1);
+	dim3 threadsPerBlock(c, c, 1);
+	// Start Timing
 	cudaEventRecord(start);
-	computeAverageAll << < blocksPerGridRed, threadsPerBlockRed >> > (&c, d_red_input, d_red_output);
-
-	dim3 blocksPerGridGreen(1, 1, 1);
-	dim3 threadsPerBlockGreen(size, 1, 1);
-	computeAverageAll << < blocksPerGridGreen, threadsPerBlockGreen >> > (&c, d_green_input, d_green_output);
-
-	dim3 blocksPerGridBlue(1, 1, 1);
-	dim3 threadsPerBlockBlue(size, 1, 1);
-	computeAverageAll << < blocksPerGridBlue, threadsPerBlockBlue >> > (&c, d_blue_input, d_blue_output);
+	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_c, d_red, d_green, d_blue);
 	cudaEventRecord(stop);
 
 	/* Wait for All Threads to Complete */
 	cudaThreadSynchronize();
+	// Stop Timing
 	cudaEventSynchronize(stop);
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
 	checkCUDAError("Kernel execution");
 
 	/* Copy the GPU Output back to the Host */
-	cudaMemcpy(red, d_red_output, sizeof(red), cudaMemcpyDeviceToHost);
-	cudaMemcpy(green, d_green_output, sizeof(green), cudaMemcpyDeviceToHost);
-	cudaMemcpy(blue, d_blue_output, sizeof(blue), cudaMemcpyDeviceToHost);
+	cudaMemcpy(red_vector, d_red_data, sizeof(unsigned short) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpy(green_vector, d_green_data, sizeof(unsigned short) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpy(blue_vector, d_blue_data, sizeof(unsigned short) * height * width, cudaMemcpyDeviceToHost);
+	cudaMemcpyFromSymbol(&h_red_average, red_average, sizeof(unsigned long), cudaMemcpyDeviceToHost);
+	cudaMemcpyFromSymbol(&h_green_average, green_average, sizeof(unsigned long), cudaMemcpyDeviceToHost);
+	cudaMemcpyFromSymbol(&h_blue_average, blue_average, sizeof(unsigned long), cudaMemcpyDeviceToHost);
 	checkCUDAError("Result transfer to host");
-
-	printf("--CUDA Time: %.10f ms\n", milliseconds);
+	vec2matrix();
 
 	/* Free Device Memory */
 	// Red
-	cudaFree(d_red_input);
-	cudaFree(d_red_input_data);
-	cudaFree(d_red_output);
+	cudaFree(d_red);
+	cudaFree(d_red_data);
 	// Green
-	cudaFree(d_green_input);
-	cudaFree(d_green_input_data);
-	cudaFree(d_green_output);
+	cudaFree(d_green);
+	cudaFree(d_green_data);
 	// Bluie
-	cudaFree(d_blue_input);
-	cudaFree(d_blue_input_data);
-	cudaFree(d_blue_output);
+	cudaFree(d_blue);
+	cudaFree(d_blue_data);
+	// Average
+	//cudaFree(red_average);
+	//cudaFree(green_average);
+	//cudaFree(blue_average);
 	checkCUDAError("Free memory");
 
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
 
+	printf("|| CUDA Average Image Colour\n");
+	printf("|| -- red = %hu\n", h_red_average / (width*height));
+	printf("|| -- green = %hu\n", h_green_average / (width*height));
+	printf("|| -- blue = %hu\n", h_blue_average / (width*height));
+	printf("|| CUDA Mode Execution Time\n");
+	printf("|| -- %.0f s\n", milliseconds / 1000.0);
+	printf("|| -- %.10f ms\n", milliseconds);
 	printf("=============== Stop Run CUDA! ===============\n");
 }
 
 /*
   CPU mode
 */
-int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp)
+int runCPU()
 {
+	printf("\n=============== Start Run CPU! ===============\n");
+	/* Set Clock */
+	double begin_cpu, end_cpu;
+	// Start Timing
+	begin_cpu = omp_get_wtime();
+
+	/* Initialise Average */
+	unsigned short red_average = 0;
+	unsigned short blue_average = 0;
+	unsigned short green_average = 0;
+
 	/* iteration */
 	unsigned short i, j, k, l = 0;
 
@@ -476,6 +475,7 @@ int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short 
 			red_average_all += red_average_part;
 			green_average_all += green_average_part;
 			blue_average_all += blue_average_part;
+			printf("%d-%d: %d-%d-%d\n", i, j, red_average_all, green_average_all, blue_average_all);
 
 			// calculate average pixel values
 			red_average_part /= (limitation_width * limitation_height);
@@ -503,17 +503,38 @@ int runCPU(unsigned short *red_temp, unsigned short *green_temp, unsigned short 
 	blue_average_all /= (width * height);
 
 	// return pixel values
-	*red_temp = (unsigned short)red_average_all;
-	*green_temp = (unsigned short)green_average_all;
-	*blue_temp = (unsigned short)blue_average_all;
+	red_average = (unsigned short)red_average_all;
+	green_average = (unsigned short)green_average_all;
+	blue_average = (unsigned short)blue_average_all;
 
+	// Stop Timing
+	end_cpu = omp_get_wtime();
+	printf("|| CPU Average Image Colour\n");
+	printf("|| -- red = %hu\n", red_average);
+	printf("|| -- green = %hu\n", green_average);
+	printf("|| -- blue = %hu\n", blue_average);
+	printf("|| CPU Mode Execution Time\n");
+	printf("|| -- %.0f s\n", (end_cpu - begin_cpu));
+	printf("|| -- %.5f ms\n", (end_cpu - begin_cpu)*1000.0);
+	printf("=============== Stop Run CPU! ===============\n");
 	return 1;
 }
 
 /*
   OPENMP
 */
-int runOPENMP(unsigned short *red_temp, unsigned short *green_temp, unsigned short *blue_temp) {
+int runOPENMP() {
+	printf("\n=============== Start Run OPENMP! ===============\n");
+	/* Set Clock */
+	double begin_openmp, end_openmp;
+	// Start Timing
+	begin_openmp = omp_get_wtime();
+
+	/* Initialise Average */
+	unsigned short red_average = 0;
+	unsigned short blue_average = 0;
+	unsigned short green_average = 0;
+
 	/* iteration */
 	signed short i, j, k, l = 0;
 
@@ -637,10 +658,20 @@ int runOPENMP(unsigned short *red_temp, unsigned short *green_temp, unsigned sho
 	blue_average_all /= width * height;
 
 	// return pixel values
-	*red_temp = (unsigned short)red_average_all;
-	*green_temp = (unsigned short)green_average_all;
-	*blue_temp = (unsigned short)blue_average_all;
+	red_average = (unsigned short)red_average_all;
+	green_average = (unsigned short)green_average_all;
+	blue_average = (unsigned short)blue_average_all;
 
+	// Stop Timing
+	end_openmp = omp_get_wtime();
+	printf("|| OPENMP Average Image Colour\n");
+	printf("|| -- red = %hu\n", red_average);
+	printf("|| -- green = %hu\n", green_average);
+	printf("|| -- blue = %hu\n", blue_average);
+	printf("|| OPENMP Mode Execution Time\n");
+	printf("|| -- %.0f s\n", (end_openmp - begin_openmp));
+	printf("|| -- %.5f ms\n", (end_openmp - begin_openmp)*1000.0);
+	printf("=============== Stop Run OPENMP! ===============\n");
 	return 1;
 }
 
@@ -671,10 +702,10 @@ int process_command_line(int argc, char *argv[]) {
 	printf("\n=============== Read in Arguments ===============\n");
 
 	// first argument is always the executable name
-	printf("--Executable Name: %s\n", argv[0]);
+	printf("|| -- Executable Name: %s\n", argv[0]);
 
 	// read in the non optional command line arguments
-	printf("--c: %s\n", argv[1]);
+	printf("|| -- c: %s\n", argv[1]);
 	for (int i = 0; i < strlen(argv[1]); i++) {
 		if ((argv[1][i] >= 'a' && argv[1][i] <= 'z') || (argv[1][i] >= 'A' && argv[1][i] <= 'Z') || argv[1][i] == '-' || argv[1][i] == '.')
 		{
@@ -704,7 +735,7 @@ int process_command_line(int argc, char *argv[]) {
 	
 
 	// read in the mode
-	printf("--Mode: %s\n", argv[2]);
+	printf("|| -- Mode: %s\n", argv[2]);
 	if (!strcmp(argv[2], "CPU"))
 		execution_mode = CPU;
 	else if (!strcmp(argv[2], "OPENMP"))
@@ -721,17 +752,17 @@ int process_command_line(int argc, char *argv[]) {
 	}
 
 	// read in the input image name
-	printf("--Input Image Name: %s\n", argv[4]);
+	printf("|| -- Input Image Name: %s\n", argv[4]);
 	input_image_name = argv[4];
 
 	// read in the output image name
-	printf("--Output Image Name: %s\n", argv[6]);
+	printf("|| -- Output Image Name: %s\n", argv[6]);
 	output_image_name = argv[6];
 
 	// read in any optional part 3 arguments
 	if (argc == 9) {
-		printf("+++++++++++++++ Read in Optional Part +++++++++++++++\n");
-		printf("output Image Format: %s\n", argv[8]);
+		printf("\n+++++++++++++++ Read in Optional Part +++++++++++++++\n");
+		printf("|| -- output Image Format: %s\n", argv[8]);
 		if (!strcmp(argv[8], "PPM_BINARY"))
 			image_format = PPM_BINARY;
 		else if (!strcmp(argv[8], "PPM_PLAIN_TEXT"))
@@ -755,7 +786,7 @@ int readFile() {
 	FILE *f = NULL;
 
 	// open file as binary
-	printf("\n=============== Start Read Input File: %s ===============\n", input_image_name);
+	printf("\n=============== Start Read Input File ===============\n");
 	f = fopen(input_image_name, "rb");
 
 	if (f == NULL) {
@@ -768,7 +799,7 @@ int readFile() {
 
 	// Read magic number
 	fread(&magic_number, sizeof(char), 3, f);
-	printf("--Magic Number: %s\n", magic_number);
+	printf("|| -- Magic Number: %s\n", magic_number);
 	magic_number[2] = '\0';
 	if (strncmp(magic_number, "P3", 2) == 0) {
 		// P3 - Plain Text
@@ -779,20 +810,20 @@ int readFile() {
 
 			// skip the comment part
 			if (strncmp(comment, "#", 1) == 0) {
-				printf("--Comment is: %s\n", comment);
+				printf("|| -- Comment is: %s\n", comment);
 				i--;
 			}
 			else if (width == 0) {
 				width = (unsigned short)atoi(comment);
-				printf("--Width is: %d\n", width);
+				printf("|| -- Width is: %d\n", width);
 			}	
 			else if (height == 0) {
 				height = (unsigned short)atoi(comment);
-				printf("--Height is: %d\n", height);
+				printf("|| -- Height is: %d\n", height);
 			}
 			else {
 				max_color_value = (unsigned short)atoi(comment);
-				printf("--Max Color Value is: %d\n", max_color_value);
+				printf("|| -- Max Color Value is: %d\n", max_color_value);
 			}
 		}
 
@@ -865,7 +896,7 @@ int readFile() {
 		}
 		temp_value[i] = '\0';
 		width = atoi(temp_value);
-		printf("--Width is: %d\n", width);
+		printf("|| -- Width is: %d\n", width);
 
 
 		// read in height
@@ -879,7 +910,7 @@ int readFile() {
 		}
 		temp_value[i] = '\0';
 		height = atoi(temp_value);
-		printf("--Height is: %d\n", height);
+		printf("|| -- Height is: %d\n", height);
 
 
 		// read in max color value
@@ -893,7 +924,7 @@ int readFile() {
 		}
 		temp_value[i] = '\0';
 		max_color_value = atoi(temp_value);
-		printf("--Max Color Value is: %d\n", max_color_value);
+		printf("|| -- Max Color Value is: %d\n", max_color_value);
 
 		// allocate memory for arrays
 		allocateMemory();
@@ -983,6 +1014,9 @@ void checkCUDAError(const char *msg)
 	}
 }
 
+/*
+  Convert vector to matrix
+*/
 void vec2matrix() 
 {
 	int k = 0;
@@ -1052,7 +1086,7 @@ int writePlainText() {
 	int i, j;
 	FILE *f = NULL;
 
-	printf("========== Start write plain text file ==========\n");
+	printf("\n========== Start write plain text file ==========\n");
 
 	// open file as binary, read
 	f = fopen(output_image_name, "wb");

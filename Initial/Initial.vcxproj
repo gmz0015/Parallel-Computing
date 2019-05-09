@@ -87,7 +87,7 @@
     <None Include="SheffieldPlainText16x16.ppm" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="mosaic.c" />
+    <CudaCompile Include="mosaic.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

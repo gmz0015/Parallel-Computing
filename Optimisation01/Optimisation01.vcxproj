@@ -80,6 +80,9 @@
   <ItemGroup>
     <CudaCompile Include="mosaic.cu" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Dog2048x2048.ppm" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 10.0.targets" />

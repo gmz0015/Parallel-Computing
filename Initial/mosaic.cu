@@ -14,9 +14,6 @@
 
 #pragma warning(disable : 4996)
 
-#define CHAR_MULTIPLIER 4 
-#define CONFLICT_FREE(x) (x*CHAR_MULTIPLIER % (BLOCK_SIZE+1)) 
-
 void print_help();
 
 // process the arguments
@@ -290,6 +287,8 @@ void runCUDA()
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
+	// Start Timing
+	cudaEventRecord(start);
 
 	// TODO remember to change
 	int size = (width / c) * (height / c);
@@ -388,17 +387,11 @@ void runCUDA()
 	dim3 blocksPerGrid(cell_per_column, 1, 1);
 	dim3 threadsPerBlock(cell_per_row, 1, 1);
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
-	// Start Timing
-	cudaEventRecord(start);
 	assignCell <<< blocksPerGrid, threadsPerBlock, (cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*)) >>> (width, height, d_c, cell_per_row, d_red, d_green, d_blue, d_sum_red_row, d_sum_green_row, d_sum_blue_row);
 	cudaEventRecord(stop);
 
 	/* Wait for All Threads to Complete */
 	cudaThreadSynchronize();
-	// Stop Timing
-	cudaEventSynchronize(stop);
-	float milliseconds = 0;
-	cudaEventElapsedTime(&milliseconds, start, stop);
 	checkCUDAError("Kernel execution");
 
 	/* Copy the GPU Output back to the Host */
@@ -421,17 +414,9 @@ void runCUDA()
 	
 	vec2matrix();
 
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-
-	printf("|| CUDA Average Image Colour\n");
-	printf("|| -- red = %hu\n", red_average / (pixel_per_column * pixel_per_row));
-	printf("|| -- green = %hu\n", green_average / (pixel_per_column * pixel_per_row));
-	printf("|| -- blue = %hu\n", blue_average / (pixel_per_column * pixel_per_row));
-	printf("|| CUDA Mode Execution Time\n");
-	printf("|| -- %.0f s\n", milliseconds / 1000.0);
-	printf("|| -- %.10f ms\n", milliseconds);
-	printf("=============== Stop Run CUDA! ===============\n");
+	red_average = red_average / (pixel_per_column * pixel_per_row);
+	green_average = green_average / (pixel_per_column * pixel_per_row);
+	blue_average = blue_average / (pixel_per_column * pixel_per_row);
 
 	/* Free Device Memory */
 	cudaFree(d_c);
@@ -457,6 +442,23 @@ void runCUDA()
 	free(h_red_average);
 	free(h_green_average);
 	free(h_blue_average);
+
+	// Stop Timing
+	cudaEventSynchronize(stop);
+	float milliseconds = 0;
+	cudaEventElapsedTime(&milliseconds, start, stop);
+
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
+
+	printf("|| CUDA Average Image Colour\n");
+	printf("|| -- red = %hu\n", red_average);
+	printf("|| -- green = %hu\n", green_average);
+	printf("|| -- blue = %hu\n", blue_average);
+	printf("|| CUDA Mode Execution Time\n");
+	printf("|| -- %.0f s\n", milliseconds / 1000.0);
+	printf("|| -- %.10f ms\n", milliseconds);
+	printf("=============== Stop Run CUDA! ===============\n");
 }
 
 /*
@@ -872,7 +874,7 @@ int process_command_line(int argc, char *argv[]) {
 int readFile() {
 	/* cache */
 	char temp[3]; // temporarily store each read result 
-	char *temp_value = (char *)malloc(sizeof(char) * 4); // temporarily store the reading results
+	char *temp_value = (char *)malloc(sizeof(char) * 10); // temporarily store the reading results
 
 	FILE *f = NULL;
 

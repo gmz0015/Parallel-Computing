@@ -54,13 +54,13 @@ The consuming time of different approaches for the initial version is showed bel
 
 ##### Q1: The reason for consuming more time with the increase of c value.
 
-A1: Obviously, GPU performs very well at parallel computing and the timing results also prove it. Since each thread process a cell, there will be less calculation within a thread if c value is small which means that it will fully use the advantages of GPU and consumes less time. 
+A1: Obviously, GPU performs very well at parallel computing and the timing results also prove it. Since each thread process a cell, there will be less calculation within a thread if c value is small which means that it will fully use the advantages of GPU and consumes less time. [IMPROVEMENT - unrelated c]
 
 
 
 ##### Q2: The improvement of memory strategies
 
-A2: Because I store all variables at global memory except the sum of each row's value, 
+A2: Because I store all variables at global memory except the sum of each row's value stored in share memory, this may consume more time on addressing the location of an element.  [IMPROVEMENT - using constant and texture]
 
 ## 3 Limitations
 

@@ -7,6 +7,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Initial", "Initial\Initial.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Refer", "Refer\Refer.vcxproj", "{530A16C3-D1BE-4313-B5F7-3760041DE851}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Optimisation01", "Optimisation01\Optimisation01.vcxproj", "{F6946609-AA78-4B24-9CA4-5923C49E61FE}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Tempt", "Tempt\Tempt.vcxproj", "{D485BD84-A93F-42E1-B64B-A453FD684719}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +31,18 @@ Global
 		{530A16C3-D1BE-4313-B5F7-3760041DE851}.Release|x64.ActiveCfg = Release|x64
 		{530A16C3-D1BE-4313-B5F7-3760041DE851}.Release|x64.Build.0 = Release|x64
 		{530A16C3-D1BE-4313-B5F7-3760041DE851}.Release|x86.ActiveCfg = Release|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Debug|x64.ActiveCfg = Debug|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Debug|x64.Build.0 = Debug|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Debug|x86.ActiveCfg = Debug|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Release|x64.ActiveCfg = Release|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Release|x64.Build.0 = Release|x64
+		{F6946609-AA78-4B24-9CA4-5923C49E61FE}.Release|x86.ActiveCfg = Release|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Debug|x64.ActiveCfg = Debug|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Debug|x64.Build.0 = Debug|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Debug|x86.ActiveCfg = Debug|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Release|x64.ActiveCfg = Release|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Release|x64.Build.0 = Release|x64
+		{D485BD84-A93F-42E1-B64B-A453FD684719}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

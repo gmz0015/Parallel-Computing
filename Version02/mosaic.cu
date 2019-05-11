@@ -20,31 +20,31 @@
 void print_help();
 
 // process the arguments
-int process_command_line(int argc, char *argv[]); 
+int process_command_line(int argc, char *argv[]);
 
 // read header and original pixel values from file
-int readFile(); 
+int readFile();
 
 /* Allocate Memory */
-int allocateMemory(); 
+int allocateMemory();
 
 int allocateCUDAMemory(unsigned short **d_red_input, unsigned short **d_red_output, unsigned short **d_green_input, unsigned short **d_green_output, unsigned short **d_blue_input, unsigned short **d_blue_output);
 
 void checkCUDAError(const char*);
 
 /* Run */
-int runCPU(); 
-int runOPENMP(); 
+int runCPU();
+int runOPENMP();
 void runCUDA();
 
 void vec2matrix();
 
 /* Write File */
-int writeBinary(); 
-int writePlainText(); 
+int writeBinary();
+int writePlainText();
 
 /* Free Memory */
-int freeMemory(); 
+int freeMemory();
 
 typedef enum MODE { CPU, OPENMP, CUDA, ALL } MODE;
 typedef enum FORMAT { PPM_BINARY, PPM_PLAIN_TEXT } FORMAT;
@@ -145,7 +145,7 @@ int main(int argc, char *argv[]) {
 		runCPU();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -154,7 +154,7 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 
 		/* OPENMP */
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
 		runOPENMP();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -172,14 +172,14 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 		/* CUDA */
 		readFile();
 		runCUDA();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 		break;
 	}
@@ -390,7 +390,7 @@ void runCUDA()
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
 	// Start Timing
 	cudaEventRecord(start);
-	assignCell <<< blocksPerGrid, threadsPerBlock, (cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*)) >>> (width, height, d_c, cell_per_row, d_red, d_green, d_blue, d_sum_red_row, d_sum_green_row, d_sum_blue_row);
+	assignCell << < blocksPerGrid, threadsPerBlock, (cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*)) >> > (width, height, d_c, cell_per_row, d_red, d_green, d_blue, d_sum_red_row, d_sum_green_row, d_sum_blue_row);
 	cudaEventRecord(stop);
 
 	/* Wait for All Threads to Complete */
@@ -418,23 +418,10 @@ void runCUDA()
 		green_average += h_green_average[i];
 		blue_average += h_blue_average[i];
 	}
-	
+
 	vec2matrix();
 
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-
-	printf("|| CUDA Average Image Colour\n");
-	printf("|| -- red = %hu\n", red_average / (pixel_per_column * pixel_per_row));
-	printf("|| -- green = %hu\n", green_average / (pixel_per_column * pixel_per_row));
-	printf("|| -- blue = %hu\n", blue_average / (pixel_per_column * pixel_per_row));
-	printf("|| CUDA Mode Execution Time\n");
-	printf("|| -- %.0f s\n", milliseconds / 1000.0);
-	printf("|| -- %.10f ms\n", milliseconds);
-	printf("=============== Stop Run CUDA! ===============\n");
-
 	/* Free Device Memory */
-	cudaFree(d_c);
 	// Red
 	cudaFree(d_red);
 	cudaFree(d_red_data);
@@ -450,13 +437,17 @@ void runCUDA()
 	cudaFree(d_sum_blue_row);
 	checkCUDAError("Free memory");
 
-	/* Free Host Memory */
-	free(h_red);
-	free(h_green);
-	free(h_blue);
-	free(h_red_average);
-	free(h_green_average);
-	free(h_blue_average);
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
+
+	printf("|| CUDA Average Image Colour\n");
+	printf("|| -- red = %hu\n", red_average / (pixel_per_column * pixel_per_row));
+	printf("|| -- green = %hu\n", green_average / (pixel_per_column * pixel_per_row));
+	printf("|| -- blue = %hu\n", blue_average / (pixel_per_column * pixel_per_row));
+	printf("|| CUDA Mode Execution Time\n");
+	printf("|| -- %.0f s\n", milliseconds / 1000.0);
+	printf("|| -- %.10f ms\n", milliseconds);
+	printf("=============== Stop Run CUDA! ===============\n");
 }
 
 /*
@@ -823,7 +814,7 @@ int process_command_line(int argc, char *argv[]) {
 			return FAILURE;
 		}
 	}
-	
+
 
 	// read in the mode
 	printf("|| -- Mode: %s\n", argv[2]);
@@ -907,7 +898,7 @@ int readFile() {
 			else if (width == 0) {
 				width = (unsigned short)atoi(comment);
 				printf("|| -- Width is: %d\n", width);
-			}	
+			}
 			else if (height == 0) {
 				height = (unsigned short)atoi(comment);
 				printf("|| -- Height is: %d\n", height);
@@ -1034,13 +1025,13 @@ int readFile() {
 		free(color_temp);
 	}
 	else {
-	printf("=============== Stop Read Input File! ===============\n");
+		printf("=============== Stop Read Input File! ===============\n");
 		fprintf(stderr, "Magic Number is not P3 or P6: %s\n", input_image_name);
 		printf("=====================================================\n");
 		exit(1);
 	}
 
-	free(temp_value);
+
 	return 1;
 }
 
@@ -1108,7 +1099,7 @@ void checkCUDAError(const char *msg)
 /*
   Convert vector to matrix
 */
-void vec2matrix() 
+void vec2matrix()
 {
 	int k = 0;
 	for (int i = 0; i < height; i++) {
@@ -1219,10 +1210,6 @@ int freeMemory() {
 	for (i = 0; i < height; i++)
 		free(blue[i]);
 	free(blue);
-
-	free(red_vector);
-	free(green_vector);
-	free(blue_vector);
 
 	return 1;
 }

@@ -407,12 +407,13 @@ void runCUDA()
 	free(h_blue_sum);
 
 	// Stop Timing
-	cudaEventSynchronize(stop);
 	float milliseconds = 0;
+	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
 
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
+
 
 	printf("|| CUDA Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);

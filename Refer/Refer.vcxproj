@@ -15,6 +15,7 @@
     <None Include="input.ppm" />
   </ItemGroup>
   <ItemGroup>
+    <CudaCompile Include="..\..\lab03_sln\sln\Lab03_Exercise01\exercise01_sln.cu" />
     <CudaCompile Include="..\..\lab06_sln\sln\Lab05_Exercise01\exercise01_sln.cu" />
     <CudaCompile Include="..\..\lab06_sln\sln\Lab05_Exercise02\exercise02_sln.cu" />
   </ItemGroup>

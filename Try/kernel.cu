@@ -15,6 +15,7 @@ __device__ int modulo(int a, int b) {
 	return r;
 }
 
+__constant__ int d_c;
 __device__ int d_value;
 
 __global__ void affine_decrypt()
@@ -23,13 +24,13 @@ __global__ void affine_decrypt()
 	int *temp = &d_value;
 	///d_value = *temp + threadIdx.x;
 	//d_value = temp
-	atomicAdd(&temp[0], 1);
+	atomicAdd(&temp[0], d_c);
 	printf("%d-%d: %d\n", blockIdx.x, threadIdx.x, d_value);
 }
 
 int main(int argc, char *argv[])
 {
-	int *h_value = 31;
+	int *h_value;
 	h_value = (int *)malloc(sizeof(int));
 	*h_value = 31;
 	int i = 7;
@@ -43,6 +44,7 @@ int main(int argc, char *argv[])
 
 
 	/* copy host input to device input */
+	cudaMemcpyToSymbol(d_c, &i, sizeof(int));
 	cudaMemcpyToSymbol(d_value, h_value, sizeof(int));
 	checkCUDAError("Input transfer to device");
 

@@ -198,30 +198,36 @@ int main(int argc, char *argv[]) {
 /*
   CUDA
 */
-__device__ int computeCell(unsigned int limitation_width, unsigned int limitation_height, unsigned int c, int start_point_row, int start_point_column, unsigned short **d_color) {
+__constant__ unsigned short D_C;
+__constant__ unsigned short QUOTIENT_ROW;
+__constant__ unsigned short REMAINDER_ROW;
+__constant__ unsigned short QUOTIENT_COLUMN;
+__constant__ unsigned short REMAINDER_COLUMN;
+
+__device__ int d_red_sum;
+__device__ int d_green_sum;
+__device__ int d_blue_sum;
+
+__device__ int computeCell(unsigned int limitation_width, unsigned int limitation_height, int start_point_row, int start_point_column, unsigned short **d_color) {
 	int average_return;
 	unsigned long average_pixel = 0;
 	int i, j;
 	for (i = 0; i < limitation_height; i++) {
 		for (j = 0; j < limitation_width; j++) {
-			average_pixel += d_color[start_point_row * c + i][start_point_column * c + j];
+			average_pixel += d_color[start_point_row * D_C + i][start_point_column * D_C + j];
 		}
 	}
 	average_return = (int) average_pixel;
 	average_pixel /= (limitation_width * limitation_height);
 	for (i = 0; i < limitation_height; i++) {
 		for (j = 0; j < limitation_width; j++) {
-			d_color[start_point_row * c + i][start_point_column * c + j] = average_pixel;
+			d_color[start_point_row * D_C + i][start_point_column * D_C + j] = average_pixel;
 		}
 	}
 	return average_return;
 }
 
-__device__ int d_red_sum;
-__device__ int d_green_sum;
-__device__ int d_blue_sum;
-
-__global__ void assignCell(unsigned short width, unsigned short height, unsigned int *d_c, unsigned short **d_red, unsigned short **d_green, unsigned short **d_blue)
+__global__ void assignCell(unsigned short **d_red, unsigned short **d_green, unsigned short **d_blue)
 {
 	// threadIdx.x --- cell_per_row
 	// threadIdx.y --- column
@@ -235,31 +241,19 @@ __global__ void assignCell(unsigned short width, unsigned short height, unsigned
 	int *d_green_sum_local = &d_green_sum;
 	int *d_blue_sum_local = &d_blue_sum;
 
-	/* the number and width of cells */
-	unsigned short quotient_row = width / *d_c; // the number of square cells in a row
-	unsigned short remainder_row = width % *d_c; // the width of the rest cell in a row (optional)
-	unsigned short quotient_column = height / *d_c; // the number of square cells in a column
-	unsigned short remainder_column = height % *d_c; // the height of the rest cell in a column (optional)
-
 	/* the width and height for a cell */
 	unsigned short limitation_width = 0; // the width of a cell
 	unsigned short limitation_height = 0; // the height of a cell
 
 	// change limitaion height of the cell 
-	if (blockIdx.x == quotient_column)
-		limitation_height = remainder_column;
-	else
-		limitation_height = *d_c;
+	limitation_height = (blockIdx.x == QUOTIENT_COLUMN) ? REMAINDER_COLUMN : D_C;
 
 	// change limitation width of the cell
-	if (threadIdx.x == quotient_row)
-		limitation_width = remainder_row;
-	else
-		limitation_width = *d_c;
+	limitation_width = (threadIdx.x == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
 	
-	atomicAdd(&d_red_sum_local[0], computeCell(limitation_width, limitation_height, *d_c, blockIdx.x, threadIdx.x, d_red));
-	atomicAdd(&d_green_sum_local[0], computeCell(limitation_width, limitation_height, *d_c, blockIdx.x, threadIdx.x, d_green));
-	atomicAdd(&d_blue_sum_local[0], computeCell(limitation_width, limitation_height, *d_c, blockIdx.x, threadIdx.x, d_blue));
+	atomicAdd(&d_red_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_red));
+	atomicAdd(&d_green_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_green));
+	atomicAdd(&d_blue_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_blue));
 
 	//printf("%d-%d: %d-%d-%d\n", blockIdx.x, threadIdx.x, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
 	//printf("-- Global --- %d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
@@ -277,12 +271,10 @@ void runCUDA()
 	cudaEventRecord(start);
 
 	// TODO remember to change
-	int size = (width / c) * (height / c);
 	unsigned int pixel_per_row = width;
 	unsigned int pixel_per_column = height;
 	unsigned int cell_per_row = width / c;
 	unsigned int cell_per_column = height / c;
-	unsigned int *d_c;
 	/* the number and width of cells */
 	unsigned short quotient_row = width / c; // the number of square cells in a row
 	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
@@ -323,7 +315,6 @@ void runCUDA()
 	*h_blue_sum = 0;
 
 	/* Allocate Device Memory */
-	cudaMalloc((void **)&d_c, sizeof(unsigned int));
 	// Red
 	cudaMalloc((void **)&d_red, sizeof(unsigned short**) * pixel_per_column);
 	cudaMalloc((void **)&d_red_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row);
@@ -353,8 +344,14 @@ void runCUDA()
 	// Blue
 	cudaMemcpy(d_blue, h_blue, sizeof(unsigned short *) * pixel_per_column, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_blue_data, blue_vector, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyHostToDevice);
-	// C
-	cudaMemcpy(d_c, &c, sizeof(unsigned int), cudaMemcpyHostToDevice);
+	
+	/* Copy to Constant */
+	cudaMemcpyToSymbol(D_C, &c, sizeof(unsigned short));
+	/* the number and width of cells */
+	cudaMemcpyToSymbol(QUOTIENT_ROW, &quotient_row, sizeof(unsigned short)); // the number of square cells in a row
+	cudaMemcpyToSymbol(REMAINDER_ROW, &remainder_row, sizeof(unsigned short)); // the width of the rest cell in a row (optional)
+	cudaMemcpyToSymbol(QUOTIENT_COLUMN, &quotient_column, sizeof(unsigned short)); // the number of square cells in a column
+	cudaMemcpyToSymbol(REMAINDER_COLUMN, &remainder_column, sizeof(unsigned short)); // the height of the rest cell in a column (optional)
 	checkCUDAError("Input transfer to device");
 
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
@@ -363,7 +360,7 @@ void runCUDA()
 	dim3 threadsPerBlock(cell_per_row, 1, 1);
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
 	
-	assignCell << < blocksPerGrid, threadsPerBlock >> > (width, height, d_c, d_red, d_green, d_blue);
+	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_red, d_green, d_blue);
 	cudaEventRecord(stop);
 
 	/* Wait for All Threads to Complete */
@@ -386,7 +383,6 @@ void runCUDA()
 	int blue_average = *h_blue_sum / (pixel_per_column * pixel_per_row);
 
 	/* Free Device Memory */
-	cudaFree(d_c);
 	// Red
 	cudaFree(d_red);
 	cudaFree(d_red_data);

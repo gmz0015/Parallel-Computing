@@ -239,30 +239,32 @@ __device__ unsigned short d_blue;
 
 texture<unsigned long, cudaTextureType1D, cudaReadModeElementType> d_cell_index;
 
-__device__ int computeCell(unsigned long pixel_num, long start_point, long end_point, unsigned short *d_color) {
+__device__ void computeCell(unsigned long pixel_num, long start_point, long end_point, unsigned short *d_color, int *d_color_sum_local) {
 	unsigned long average_pixel = 0;
 	int i, j;
 	for (i = start_point; i < end_point; i++) {
 		average_pixel += d_color[i];
 	}
-	int average_return = average_pixel;
+	atomicAdd(&d_color_sum_local[0], average_pixel);
 	average_pixel /= pixel_num;
 	for (i = start_point; i < end_point; i++) {
 		d_color[i] = average_pixel;
 	}
-	return average_return;
 }
 
 __global__ void assignCell(unsigned short *d_red_cell_vector, unsigned short *d_green_cell_vector, unsigned short *d_blue_cell_vector)
 {
 	// blockIdx.x --- the row number of the cell
 	// blockIdx.y --- the column number of the cell
+	long start_point = tex1Dfetch(d_cell_index, (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
+	long end_point = tex1Dfetch(d_cell_index, 1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
+	long pixel_num = end_point - start_point;
+	// convert global data pointer to the local pointer of this block
 
 	/* Retrieve Global Variables */
 	int *d_red_sum_local = &d_red_sum;
 	int *d_green_sum_local = &d_green_sum;
 	int *d_blue_sum_local = &d_blue_sum;
-
 
 	/* the width and height for a cell */
 	// change limitaion height of the cell 
@@ -270,24 +272,20 @@ __global__ void assignCell(unsigned short *d_red_cell_vector, unsigned short *d_
 
 	// change limitation width of the cell
 	unsigned short limitation_width = (blockIdx.y == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
-
-	long start_point = tex1Dfetch(d_cell_index, (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
-	long end_point = tex1Dfetch(d_cell_index, 1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
-	long pixel_num = end_point - start_point;
 	
 	// Red
 	if (blockIdx.z == 0) {
-		atomicAdd(&d_red_sum_local[0], computeCell(pixel_num, start_point, end_point, d_red_cell_vector));
+		computeCell(pixel_num, start_point, end_point, d_red_cell_vector, d_red_sum_local);
 	}
 
 	// Green
 	if (blockIdx.z == 1) {
-		atomicAdd(&d_green_sum_local[0], computeCell(pixel_num, start_point, end_point, d_green_cell_vector));
+		computeCell(pixel_num, start_point, end_point, d_green_cell_vector, d_green_sum_local);
 	}
 
 	// Blue
 	if (blockIdx.z == 2) {
-		atomicAdd(&d_blue_sum_local[0], computeCell(pixel_num, start_point, end_point, d_blue_cell_vector));
+		computeCell(pixel_num, start_point, end_point, d_blue_cell_vector, d_blue_sum_local);
 	}
 	//printf("%d-%d: %d-%d-%d\n", blockIdx.x, threadIdx.x, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
 	//printf("-- Global --- %d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);

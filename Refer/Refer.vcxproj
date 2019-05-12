@@ -15,9 +15,10 @@
     <None Include="input.ppm" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="..\..\lab03_sln\sln\Lab03_Exercise01\exercise01_sln.cu" />
-    <CudaCompile Include="..\..\lab06_sln\sln\Lab05_Exercise01\exercise01_sln.cu" />
-    <CudaCompile Include="..\..\lab06_sln\sln\Lab05_Exercise02\exercise02_sln.cu" />
+    <CudaCompile Include="..\..\lab07_sln\sln\Lab06_Exercise01\exercise01_sln.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\lab07_sln\sln\Lab06_Exercise01\kernels.cuh" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{530A16C3-D1BE-4313-B5F7-3760041DE851}</ProjectGuid>

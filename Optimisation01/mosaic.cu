@@ -34,6 +34,8 @@ int runOPENMP();
 void runCUDA();
 
 void vec2matrix();
+void matrix2cellvec();
+void cellvec2matrix();
 
 /* Write File */
 int writeBinary();
@@ -69,6 +71,14 @@ unsigned short **red; // global red values (two dimension[height][width])
 unsigned short **green; // global green values (two dimension[height][width])
 unsigned short **blue; // global blue values (two dimension[height][width])
 
+/* pixel value - Cell Vector */
+unsigned short *red_cell_vector; // put cell value together
+unsigned short *green_cell_vector;
+unsigned short *blue_cell_vector;
+
+/* pixel value - Cell Vector - Index*/
+unsigned long *cell_vector_index; // start and end point
+
 /*
   Parallel Outer Loop
 */
@@ -82,7 +92,10 @@ int main(int argc, char *argv[]) {
 	// Read input image file (either binary or plain text PPM) 
 	readFile();
 
-	//TODO: execute the mosaic filter based on the mode
+	vec2matrix();
+	matrix2cellvec();
+
+	// Execute the mosaic filter based on the mode
 	switch (execution_mode) {
 	case (CPU): {
 		// Calculate the average colour value
@@ -123,6 +136,7 @@ int main(int argc, char *argv[]) {
 	case (CUDA): {
 		runCUDA();
 		//save the output image file (from last executed mode)
+		cellvec2matrix();
 		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
@@ -132,6 +146,7 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
+
 		}
 		break;
 	}
@@ -174,6 +189,8 @@ int main(int argc, char *argv[]) {
 		readFile();
 		runCUDA();
 
+		cellvec2matrix();
+
 		// Save the output image file (from last executed mode)
 		/*switch (image_format) {
 		case (PPM_BINARY): {
@@ -191,7 +208,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	freeMemory();
-	getchar();
+	//getchar();
+	cudaDeviceReset();
 	return 0;
 }
 
@@ -203,57 +221,56 @@ __constant__ unsigned short QUOTIENT_ROW;
 __constant__ unsigned short REMAINDER_ROW;
 __constant__ unsigned short QUOTIENT_COLUMN;
 __constant__ unsigned short REMAINDER_COLUMN;
+__constant__ unsigned short CELLS_PER_COLUMN;
 
 __device__ int d_red_sum;
 __device__ int d_green_sum;
 __device__ int d_blue_sum;
 
-__device__ int computeCell(unsigned int limitation_width, unsigned int limitation_height, int start_point_row, int start_point_column, unsigned short **d_color) {
-	int average_return;
+__device__ unsigned short d_red;
+__device__ unsigned short d_green;
+__device__ unsigned short d_blue;
+
+__device__ int computeCell(unsigned long pixel_num, long start_point, long end_point, unsigned short *d_color) {
 	unsigned long average_pixel = 0;
 	int i, j;
-	for (i = 0; i < limitation_height; i++) {
-		for (j = 0; j < limitation_width; j++) {
-			average_pixel += d_color[start_point_row * D_C + i][start_point_column * D_C + j];
-		}
+	for (i = start_point; i < end_point; i++) {
+		average_pixel += d_color[i];
 	}
-	average_return = (int) average_pixel;
-	average_pixel /= (limitation_width * limitation_height);
-	for (i = 0; i < limitation_height; i++) {
-		for (j = 0; j < limitation_width; j++) {
-			d_color[start_point_row * D_C + i][start_point_column * D_C + j] = average_pixel;
-		}
+	int average_return = average_pixel;
+	average_pixel /= pixel_num;
+	for (i = start_point; i < end_point; i++) {
+		d_color[i] = average_pixel;
 	}
 	return average_return;
 }
 
-__global__ void assignCell(unsigned short **d_red, unsigned short **d_green, unsigned short **d_blue)
+__global__ void assignCell(unsigned long *d_cell_vector_index, unsigned short *d_red_cell_vector, unsigned short *d_green_cell_vector, unsigned short *d_blue_cell_vector)
 {
-	// threadIdx.x --- cell_per_row
-	// threadIdx.y --- column
-	// blockIdx.x --- cell_per_column
-	// blockDim.x --- threadPerBlock
-	//printf("-- Thread --- %d-%d\n", threadIdx.x, threadIdx.y);
-	//printf("-- Block --- %d-%d\n", blockIdx.x, blockIdx.y);
-	//printf("-- BlockDim --- %d-%d\n", blockDim.x, blockDim.y);
-	//printf("-- Coordiate --- %d-%d\n", blockIdx.x, threadIdx.x);
+	// blockIdx.x --- the row number of the cell
+	// blockIdx.y --- the column number of the cell
+
+	/* Retrieve Global Variables */
 	int *d_red_sum_local = &d_red_sum;
 	int *d_green_sum_local = &d_green_sum;
 	int *d_blue_sum_local = &d_blue_sum;
 
-	/* the width and height for a cell */
-	unsigned short limitation_width = 0; // the width of a cell
-	unsigned short limitation_height = 0; // the height of a cell
 
+	/* the width and height for a cell */
 	// change limitaion height of the cell 
-	limitation_height = (blockIdx.x == QUOTIENT_COLUMN) ? REMAINDER_COLUMN : D_C;
+	unsigned short limitation_height = (blockIdx.x == QUOTIENT_COLUMN) ? REMAINDER_COLUMN : D_C;
 
 	// change limitation width of the cell
-	limitation_width = (threadIdx.x == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
+	unsigned short limitation_width = (blockIdx.y == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
+
+	long start_point = d_cell_vector_index[(blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2];
+	long end_point = d_cell_vector_index[1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2];
+	long pixel_num = end_point - start_point;
 	
-	atomicAdd(&d_red_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_red));
-	atomicAdd(&d_green_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_green));
-	atomicAdd(&d_blue_sum_local[0], computeCell(limitation_width, limitation_height, blockIdx.x, threadIdx.x, d_blue));
+	
+	atomicAdd(&d_red_sum_local[0], computeCell(pixel_num, start_point, end_point, d_red_cell_vector));
+	atomicAdd(&d_green_sum_local[0], computeCell(pixel_num, start_point, end_point, d_green_cell_vector));
+	atomicAdd(&d_blue_sum_local[0], computeCell(pixel_num, start_point, end_point, d_blue_cell_vector));
 
 	//printf("%d-%d: %d-%d-%d\n", blockIdx.x, threadIdx.x, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
 	//printf("-- Global --- %d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
@@ -264,48 +281,38 @@ void runCUDA()
 {
 	printf("\n=============== Start Run CUDA! ===============\n");
 	/* Set Clock */
-	cudaEvent_t start, stop;
+	cudaEvent_t start, start_core, stop, stop_core;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-	// Start Timing
+	cudaEventCreate(&start_core);
+	cudaEventCreate(&stop_core);
+	// Start Timing Total
 	cudaEventRecord(start);
 
-	// TODO remember to change
-	unsigned int pixel_per_row = width;
-	unsigned int pixel_per_column = height;
-	unsigned int cell_per_row = width / c;
-	unsigned int cell_per_column = height / c;
+	/* Set  */
+	unsigned int pixels_per_row = width;
+	unsigned int pixels_per_column = height;
 	/* the number and width of cells */
 	unsigned short quotient_row = width / c; // the number of square cells in a row
 	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
 	unsigned short quotient_column = height / c; // the number of square cells in a column
 	unsigned short remainder_column = height % c; // the height of the rest cell in a column (optional)
 
-	/* calculate the total number of cells */
-	if (remainder_row)
-		// if image is not multiples of c
-		cell_per_row = quotient_row + 1;
-	else
-		cell_per_row = quotient_row;
+	/* the total number of cells in a row and column */
+	unsigned short cells_per_row = (remainder_row) ? (quotient_row + 1) : quotient_row; // the number of cells in a row (decide i)
+	unsigned short cells_per_column = (remainder_column) ? (quotient_column + 1) : quotient_column; // the number of cells in a column (decide j)
 
-	if (remainder_column)
-		// if image is not multiples of c
-		cell_per_column = quotient_column + 1;
-	else
-		cell_per_column = quotient_column;
+	/* the width and height for a cell */
+	unsigned short limitation_width; // the width of a cell
+	unsigned short limitation_height; // the height of a cell
 
+	unsigned long *d_cell_vector_index;
 	// Red
-	unsigned short **h_red = (unsigned short **)malloc(sizeof(unsigned short *) * pixel_per_column);
-	unsigned short **d_red;
-	unsigned short *d_red_data;
+	unsigned short *d_red_cell_vector;
 	//Green
-	unsigned short **h_green = (unsigned short **)malloc(sizeof(unsigned short *) * pixel_per_column);
-	unsigned short **d_green;
-	unsigned short *d_green_data;
+	unsigned short *d_green_cell_vector;
 	// Blue
-	unsigned short **h_blue = (unsigned short **)malloc(sizeof(unsigned short *) * pixel_per_column);
-	unsigned short **d_blue;
-	unsigned short *d_blue_data;
+	unsigned short *d_blue_cell_vector;
 
 	int *h_red_sum = (int *)malloc(sizeof(int));
 	*h_red_sum = 0;
@@ -315,35 +322,25 @@ void runCUDA()
 	*h_blue_sum = 0;
 
 	/* Allocate Device Memory */
+	long d_cell_vector_size = sizeof(unsigned short) * width * height;
+	long d_cell_vector_index_size = sizeof(unsigned long) * cells_per_row * cells_per_column * 2;
+	cudaMalloc((void **)&d_cell_vector_index, d_cell_vector_index_size);
 	// Red
-	cudaMalloc((void **)&d_red, sizeof(unsigned short**) * pixel_per_column);
-	cudaMalloc((void **)&d_red_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row);
+	cudaMalloc((void **)&d_red_cell_vector, d_cell_vector_size);
 	// Green
-	cudaMalloc((void **)&d_green, sizeof(unsigned short**) * pixel_per_column);
-	cudaMalloc((void **)&d_green_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row);
+	cudaMalloc((void **)&d_green_cell_vector, d_cell_vector_size);
 	// Blue
-	cudaMalloc((void **)&d_blue, sizeof(unsigned short**) * pixel_per_column);
-	cudaMalloc((void **)&d_blue_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row);
+	cudaMalloc((void **)&d_blue_cell_vector, d_cell_vector_size);
 	checkCUDAError("Memory allocation");
 
-	/* Allocate Host Memory */
-	for (int i = 0; i < pixel_per_column; i++) {
-		// Input
-		h_red[i] = d_red_data + pixel_per_row * i;
-		h_green[i] = d_green_data + pixel_per_row * i;
-		h_blue[i] = d_blue_data + pixel_per_row * i;
-	}
-
 	/* Copy Host Input to Device Input */
+	cudaMemcpy(d_cell_vector_index, cell_vector_index, d_cell_vector_index_size, cudaMemcpyHostToDevice);
 	// Red
-	cudaMemcpy(d_red, h_red, sizeof(unsigned short *) * pixel_per_column, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_red_data, red_vector, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_red_cell_vector, red_cell_vector, d_cell_vector_size, cudaMemcpyHostToDevice);
 	// Green
-	cudaMemcpy(d_green, h_green, sizeof(unsigned short *) * pixel_per_column, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_green_data, green_vector, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_green_cell_vector, green_cell_vector, d_cell_vector_size, cudaMemcpyHostToDevice);
 	// Blue
-	cudaMemcpy(d_blue, h_blue, sizeof(unsigned short *) * pixel_per_column, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_blue_data, blue_vector, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_blue_cell_vector, blue_cell_vector, d_cell_vector_size, cudaMemcpyHostToDevice);
 	
 	/* Copy to Constant */
 	cudaMemcpyToSymbol(D_C, &c, sizeof(unsigned short));
@@ -352,72 +349,78 @@ void runCUDA()
 	cudaMemcpyToSymbol(REMAINDER_ROW, &remainder_row, sizeof(unsigned short)); // the width of the rest cell in a row (optional)
 	cudaMemcpyToSymbol(QUOTIENT_COLUMN, &quotient_column, sizeof(unsigned short)); // the number of square cells in a column
 	cudaMemcpyToSymbol(REMAINDER_COLUMN, &remainder_column, sizeof(unsigned short)); // the height of the rest cell in a column (optional)
+	cudaMemcpyToSymbol(CELLS_PER_COLUMN, &cells_per_column, sizeof(unsigned short));
 	checkCUDAError("Input transfer to device");
 
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
 	// Single Block
-	dim3 blocksPerGrid(cell_per_column, 1, 1);
-	dim3 threadsPerBlock(cell_per_row, 1, 1);
+	dim3 blocksPerGrid(cells_per_column, cells_per_row, 1);
+	dim3 threadsPerBlock(1, 1, 1);
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
 	
-	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_red, d_green, d_blue);
-	cudaEventRecord(stop);
+	// Start Timing Core
+	cudaEventRecord(start_core);
+	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_cell_vector_index, d_red_cell_vector, d_green_cell_vector, d_blue_cell_vector);
 
 	/* Wait for All Threads to Complete */
 	cudaThreadSynchronize();
 	checkCUDAError("Kernel execution");
+	// Stop Timing Core
+	cudaEventRecord(stop_core);
+	float milliseconds_core = 0;
+	cudaEventSynchronize(stop_core);
+	cudaEventElapsedTime(&milliseconds_core, start_core, stop_core);
 
 	/* Copy the GPU Output back to the Host */
-	cudaMemcpy(red_vector, d_red_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyDeviceToHost);
-	cudaMemcpy(green_vector, d_green_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyDeviceToHost);
-	cudaMemcpy(blue_vector, d_blue_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyDeviceToHost);
+	cudaMemcpy(red_cell_vector, d_red_cell_vector, d_cell_vector_size, cudaMemcpyDeviceToHost);
+	cudaMemcpy(green_cell_vector, d_green_cell_vector, d_cell_vector_size, cudaMemcpyDeviceToHost);
+	cudaMemcpy(blue_cell_vector, d_blue_cell_vector, d_cell_vector_size, cudaMemcpyDeviceToHost);
 	cudaMemcpyFromSymbol(h_red_sum, d_red_sum, sizeof(int));
 	cudaMemcpyFromSymbol(h_green_sum, d_green_sum, sizeof(int));
 	cudaMemcpyFromSymbol(h_blue_sum, d_blue_sum, sizeof(int));
 	checkCUDAError("Result transfer to host");
 
-	vec2matrix();
-
-	int red_average = *h_red_sum / (pixel_per_column * pixel_per_row);
-	int green_average = *h_green_sum / (pixel_per_column * pixel_per_row);
-	int blue_average = *h_blue_sum / (pixel_per_column * pixel_per_row);
-
+	int red_average = *h_red_sum / (pixels_per_column * pixels_per_row);
+	int green_average = *h_green_sum / (pixels_per_column * pixels_per_row);
+	int blue_average = *h_blue_sum / (pixels_per_column * pixels_per_row);
+	
 	/* Free Device Memory */
+	cudaFree(d_cell_vector_index);
 	// Red
-	cudaFree(d_red);
-	cudaFree(d_red_data);
+	cudaFree(d_red_cell_vector);
 	// Green
-	cudaFree(d_green);
-	cudaFree(d_green_data);
+	cudaFree(d_green_cell_vector);
 	// Bluie
-	cudaFree(d_blue);
-	cudaFree(d_blue_data);
+	cudaFree(d_blue_cell_vector);
 	checkCUDAError("Free memory");
 
 	/* Free Host Memory */
-	free(h_red);
-	free(h_green);
-	free(h_blue);
 	free(h_red_sum);
 	free(h_green_sum);
 	free(h_blue_sum);
 
-	// Stop Timing
+	// Stop Timing Total
+	cudaEventRecord(stop);
 	float milliseconds = 0;
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&milliseconds, start, stop);
 
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
+	cudaEventDestroy(start_core);
+	cudaEventDestroy(stop_core);
 
 
 	printf("|| CUDA Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| CUDA Mode Execution Time\n");
+	printf("|| CUDA Mode Total Execution Time\n");
 	printf("|| -- %.0f s\n", milliseconds / 1000.0);
 	printf("|| -- %.10f ms\n", milliseconds);
+	printf("|| CUDA Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", milliseconds_core / 1000.0);
+	printf("|| -- %.10f ms\n", milliseconds_core);
 	printf("=============== Stop Run CUDA! ===============\n");
 }
 
@@ -428,8 +431,8 @@ int runCPU()
 {
 	printf("\n=============== Start Run CPU! ===============\n");
 	/* Set Clock */
-	double begin_cpu, end_cpu;
-	// Start Timing
+	double begin_cpu, begin_cpu_core, end_cpu, end_cpu_core;
+	// Start Timing Total
 	begin_cpu = omp_get_wtime();
 
 	/* Initialise Average */
@@ -440,22 +443,23 @@ int runCPU()
 	/* iteration */
 	unsigned short i, j, k, l = 0;
 
+	/* Set  */
 	/* the number and width of cells */
-	unsigned short quotient_row = 0; // the number of square cells in a row
-	unsigned short remainder_row = 0; // the width of the rest cell in a row (optional)
-	unsigned short quotient_column = 0; // the number of square cells in a column
-	unsigned short remainder_column = 0; // the height of the rest cell in a column (optional)
+	unsigned short quotient_row = width / c; // the number of square cells in a row
+	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
+	unsigned short quotient_column = height / c; // the number of square cells in a column
+	unsigned short remainder_column = height % c; // the height of the rest cell in a column (optional)
 
 	/* the total number of cells in a row and column */
-	int cells_per_row; // the number of cells in a row (decide i)
-	int cells_per_column; // the number of cells in a column (decide j)
-
-	/* the total number of cells */
-	int cells;
+	unsigned short cells_per_row = (remainder_row) ? (quotient_row + 1) : quotient_row; // the number of cells in a row (decide i)
+	unsigned short cells_per_column = (remainder_column) ? (quotient_column + 1) : quotient_column; // the number of cells in a column (decide j)
 
 	/* the width and height for a cell */
-	unsigned short limitation_width = 0; // the width of a cell
-	unsigned short limitation_height = 0; // the height of a cell
+	unsigned short limitation_width; // the width of a cell
+	unsigned short limitation_height; // the height of a cell
+
+	/* the total number of cells */
+	int cells = cells_per_row * cells_per_column;
 
 	/* average value in a cell */
 	unsigned long red_average_part = 0;
@@ -467,35 +471,13 @@ int runCPU()
 	unsigned long green_average_all = 0;
 	unsigned long blue_average_all = 0;
 
-	/* calculate the number and width of cells */
-	quotient_row = width / c;
-	remainder_row = width % c;
-	quotient_column = height / c;
-	remainder_column = height % c;
-
-	/* calculate the total number of cells */
-	if (remainder_row)
-		// if image is not multiples of c
-		cells_per_row = quotient_row + 1;
-	else
-		cells_per_row = quotient_row;
-
-	if (remainder_column)
-		// if image is not multiples of c
-		cells_per_column = quotient_column + 1;
-	else
-		cells_per_column = quotient_column;
-
-	cells = cells_per_row * cells_per_column;
-
+	// Start Timing COre
+	begin_cpu_core = omp_get_wtime();
 	for (i = 0; i < cells_per_column; i++) {
 		// loop cells in column
 
 		// change limitaion height of the cell 
-		if (i == quotient_column)
-			limitation_height = remainder_column;
-		else
-			limitation_height = c;
+		limitation_height = (i == quotient_column) ? remainder_column : c;
 
 		for (j = 0; j < cells_per_row; j++) {
 			// loop cells in row
@@ -506,10 +488,7 @@ int runCPU()
 			blue_average_part = 0;
 
 			// change limitation width of the cell
-			if (j == quotient_row)
-				limitation_width = remainder_row;
-			else
-				limitation_width = c;
+			limitation_width = (j == quotient_row) ? remainder_row : c;
 
 			// sum all pixel values in a cell
 			for (k = 0; k < limitation_height; k++) {
@@ -549,6 +528,8 @@ int runCPU()
 			}
 		}
 	}
+	// Stop Timing Core
+	end_cpu_core = omp_get_wtime();
 
 	// calculate all average pixel values
 	red_average_all /= (width * height);
@@ -560,13 +541,16 @@ int runCPU()
 	green_average = (unsigned short)green_average_all;
 	blue_average = (unsigned short)blue_average_all;
 
-	// Stop Timing
+	// Stop Timing Total
 	end_cpu = omp_get_wtime();
 	printf("|| CPU Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| CPU Mode Execution Time\n");
+	printf("|| CPU Mode Total Execution Time\n");
+	printf("|| -- %.0f s\n", (end_cpu_core - begin_cpu_core));
+	printf("|| -- %.5f ms\n", (end_cpu_core - begin_cpu_core)*1000.0);
+	printf("|| CPU Mode Core Part Execution Time\n");
 	printf("|| -- %.0f s\n", (end_cpu - begin_cpu));
 	printf("|| -- %.5f ms\n", (end_cpu - begin_cpu)*1000.0);
 	printf("=============== Stop Run CPU! ===============\n");
@@ -579,8 +563,8 @@ int runCPU()
 int runOPENMP() {
 	printf("\n=============== Start Run OPENMP! ===============\n");
 	/* Set Clock */
-	double begin_openmp, end_openmp;
-	// Start Timing
+	double begin_openmp, begin_openmp_core, end_openmp, end_openmp_core;
+	// Start Timing Total
 	begin_openmp = omp_get_wtime();
 
 	/* Initialise Average */
@@ -590,23 +574,23 @@ int runOPENMP() {
 
 	/* iteration */
 	signed short i, j, k, l = 0;
-
+	/* Set  */
 	/* the number and width of cells */
-	unsigned short quotient_row = 0; // the number of square cells in a row
-	unsigned short remainder_row = 0; // the width of the rest cell in a row (optional)
-	unsigned short quotient_column = 0; // the number of square cells in a column
-	unsigned short remainder_column = 0; // the height of the rest cell in a column (optional)
+	unsigned short quotient_row = width / c; // the number of square cells in a row
+	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
+	unsigned short quotient_column = height / c; // the number of square cells in a column
+	unsigned short remainder_column = height % c; // the height of the rest cell in a column (optional)
 
 	/* the total number of cells in a row and column */
-	int cells_per_row; // the number of cells in a row (decide i)
-	int cells_per_column; // the number of cells in a column (decide j)
-
-	/* the total number of cells */
-	int cells;
+	unsigned short cells_per_row = (remainder_row) ? (quotient_row + 1) : quotient_row; // the number of cells in a row (decide i)
+	unsigned short cells_per_column = (remainder_column) ? (quotient_column + 1) : quotient_column; // the number of cells in a column (decide j)
 
 	/* the width and height for a cell */
-	unsigned short limitation_width = 0; // the width of a cell
-	unsigned short limitation_height = 0; // the height of a cell
+	unsigned short limitation_width; // the width of a cell
+	unsigned short limitation_height; // the height of a cell
+
+	/* the total number of cells */
+	int cells = cells_per_row * cells_per_column;
 
 	/* average value in a cell */
 	unsigned long red_average_part = 0;
@@ -618,27 +602,8 @@ int runOPENMP() {
 	unsigned long green_average_all = 0;
 	unsigned long blue_average_all = 0;
 
-	/* calculate the number and width of cells */
-	quotient_row = width / c;
-	remainder_row = width % c;
-	quotient_column = height / c;
-	remainder_column = height % c;
-
-	/* calculate the total number of cells */
-	if (remainder_row)
-		// if image is not multiples of c
-		cells_per_row = quotient_row + 1;
-	else
-		cells_per_row = quotient_row;
-
-	if (remainder_column)
-		// if image is not multiples of c
-		cells_per_column = quotient_column + 1;
-	else
-		cells_per_column = quotient_column;
-
-	cells = cells_per_row * cells_per_column;
-
+	// Start Timing Total
+	begin_openmp_core = omp_get_wtime();
 #pragma omp parallel private (i, j, k, l, red_average_part, green_average_part, blue_average_part) 
 	{
 #pragma omp for schedule(dynamic)
@@ -704,6 +669,8 @@ int runOPENMP() {
 			}// end for (j)
 		}// end for (i)
 	}// end parallel
+	// Stop Timing Core
+	end_openmp_core = omp_get_wtime();
 
 	// calculate all average pixel values
 	red_average_all /= width * height;
@@ -715,15 +682,18 @@ int runOPENMP() {
 	green_average = (unsigned short)green_average_all;
 	blue_average = (unsigned short)blue_average_all;
 
-	// Stop Timing
+	// Stop Timing Total
 	end_openmp = omp_get_wtime();
 	printf("|| OPENMP Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| OPENMP Mode Execution Time\n");
+	printf("|| OPENMP Mode Total Execution Time\n");
 	printf("|| -- %.0f s\n", (end_openmp - begin_openmp));
 	printf("|| -- %.5f ms\n", (end_openmp - begin_openmp)*1000.0);
+	printf("|| OPENMP Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", (end_openmp_core - begin_openmp_core));
+	printf("|| -- %.5f ms\n", (end_openmp_core - begin_openmp_core)*1000.0);
 	printf("=============== Stop Run OPENMP! ===============\n");
 	return 1;
 }
@@ -929,7 +899,6 @@ int readFile() {
 				exit(1);
 			}
 		}
-		vec2matrix();
 		printf("=============== Read Plain Text File is Finished! ===============\n");
 	}
 	else if (strncmp(magic_number, "P6", 2) == 0) {
@@ -991,7 +960,6 @@ int readFile() {
 			green_vector[i] = *(color_temp + i * 3 + 1);
 			blue_vector[i] = *(color_temp + i * 3 + 2);
 		}
-		vec2matrix();
 		printf("=============== Read Binary File is Finished! ===============\n");
 		free(color_temp);
 	}
@@ -1079,6 +1047,106 @@ void vec2matrix()
 			green[i][j] = green_vector[k];
 			blue[i][j] = blue_vector[k];
 			k++;
+		}
+	}
+}
+
+/*
+  Convert Matrix to Vector in Cell's Order
+
+*/
+void matrix2cellvec()
+{
+	int h = 0;
+	/* Set  */
+	/* the number and width of cells */
+	unsigned short quotient_row = width / c; // the number of square cells in a row
+	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
+	unsigned short quotient_column = height / c; // the number of square cells in a column
+	unsigned short remainder_column = height % c; // the height of the rest cell in a column (optional)
+
+	/* the total number of cells in a row and column */
+	unsigned short cells_per_row = (remainder_row) ? (quotient_row + 1) : quotient_row; // the number of cells in a row (decide i)
+	unsigned short cells_per_column = (remainder_column) ? (quotient_column + 1) : quotient_column; // the number of cells in a column (decide j)
+
+	/* the width and height for a cell */
+	unsigned short cell_width; // the width of a cell
+	unsigned short cell_height; // the height of a cell
+
+	/* Allocate Memory */
+	red_cell_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+	green_cell_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+	blue_cell_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+
+	cell_vector_index = (unsigned long *)malloc(sizeof(unsigned long) * cells_per_row * cells_per_column * 2);
+	
+	for (int i = 0; i < cells_per_column; i++) {
+		// change limitaion height of the cell 
+		cell_height = (i == quotient_column) ? remainder_column : c;
+		for (int j = 0; j < cells_per_row; j++) {
+			// change limitation width of the cell
+			cell_width = (j == quotient_row) ? remainder_row : c;
+
+			// Start Point
+			cell_vector_index[(i*cells_per_column + j) * 2] = h;
+
+			// sum all pixel values in a cell
+			for (int k = 0; k < cell_height; k++) {
+				// loop pixel in cell row
+				for (int l = 0; l < cell_width; l++) {
+					// loop pixel in cell column
+
+					// sum up pixel values
+					red_cell_vector[h] = red[i*c + k][j*c + l];
+					green_cell_vector[h] = green[i*c + k][j*c + l];
+					blue_cell_vector[h] = blue[i*c + k][j*c + l];
+					h++;
+				}
+			}
+
+			// End Point
+			cell_vector_index[(i*cells_per_column + j) * 2 + 1] = h;
+		}
+	}
+}
+
+void cellvec2matrix() {
+	int h = 0;
+	/* Set  */
+	/* the number and width of cells */
+	unsigned short quotient_row = width / c; // the number of square cells in a row
+	unsigned short remainder_row = width % c; // the width of the rest cell in a row (optional)
+	unsigned short quotient_column = height / c; // the number of square cells in a column
+	unsigned short remainder_column = height % c; // the height of the rest cell in a column (optional)
+
+	/* the total number of cells in a row and column */
+	unsigned short cells_per_row = (remainder_row) ? (quotient_row + 1) : quotient_row; // the number of cells in a row (decide i)
+	unsigned short cells_per_column = (remainder_column) ? (quotient_column + 1) : quotient_column; // the number of cells in a column (decide j)
+
+	/* the width and height for a cell */
+	unsigned short cell_width; // the width of a cell
+	unsigned short cell_height; // the height of a cell
+
+	for (int i = 0; i < cells_per_column; i++) {
+		// change limitaion height of the cell 
+		cell_height = (i == quotient_column) ? remainder_column : c;
+		for (int j = 0; j < cells_per_row; j++) {
+			// change limitation width of the cell
+			cell_width = (j == quotient_row) ? remainder_row : c;
+
+			// sum all pixel values in a cell
+			for (int k = 0; k < cell_height; k++) {
+				// loop pixel in cell row
+				for (int l = 0; l < cell_width; l++) {
+					// loop pixel in cell column
+
+					// sum up pixel values
+					red[i*c + k][j*c + l] = red_cell_vector[h];
+					green[i*c + k][j*c + l] = green_cell_vector[h];
+					blue[i*c + k][j*c + l] = blue_cell_vector[h];
+					h++;
+				}
+			}
 		}
 	}
 }
@@ -1185,6 +1253,12 @@ int freeMemory() {
 	free(red_vector);
 	free(green_vector);
 	free(blue_vector);
+
+	free(red_cell_vector);
+	free(green_cell_vector);
+	free(blue_cell_vector);
+
+	free(cell_vector_index);
 
 	return 1;
 }

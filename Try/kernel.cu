@@ -25,7 +25,7 @@ __global__ void affine_decrypt()
 	///d_value = *temp + threadIdx.x;
 	//d_value = temp
 	atomicAdd(&temp[0], d_c);
-	printf("%d-%d: %d\n", blockIdx.x, threadIdx.x, d_value);
+	printf("%d-%d: %d\n", blockIdx.x, threadIdx.x, warpSize);
 }
 
 int main(int argc, char *argv[])

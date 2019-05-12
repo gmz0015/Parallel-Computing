@@ -78,7 +78,10 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <CudaCompile Include="mosaic.cu" />
+    <CudaCompile Include="mosaic.cu">
+      <GenerateLineInfo Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</GenerateLineInfo>
+      <GenerateLineInfo Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</GenerateLineInfo>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Dog2048x2048.ppm" />

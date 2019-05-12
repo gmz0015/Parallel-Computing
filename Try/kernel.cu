@@ -9,10 +9,8 @@
 void checkCUDAError(const char*);
 
 
-__device__ int modulo(int a, int b) {
-	int r = a % b;
-	r = (r < 0) ? r + b : r;
-	return r;
+__device__ void modulo() {
+	printf("%d-%d-%d --- %d-%d-%d --- %d-%d-%d --- %d-%d-%d\n", threadIdx.x, threadIdx.y, threadIdx.z, blockIdx.x, blockIdx.y, blockIdx.z, blockDim.x, blockDim.y, blockDim.z, gridDim.x, gridDim.y, gridDim.z);
 }
 
 __constant__ int d_c;
@@ -20,12 +18,7 @@ __device__ int d_value;
 
 __global__ void affine_decrypt()
 {
-	//int d_value;
-	int *temp = &d_value;
-	///d_value = *temp + threadIdx.x;
-	//d_value = temp
-	atomicAdd(&temp[0], d_c);
-	printf("%d-%d: %d\n", blockIdx.x, threadIdx.x, warpSize);
+	modulo();
 }
 
 int main(int argc, char *argv[])
@@ -49,8 +42,8 @@ int main(int argc, char *argv[])
 	checkCUDAError("Input transfer to device");
 
 	/* Configure the grid of thread blocks and run the GPU kernel */
-	dim3 blocksPerGrid(16, 1, 1);
-	dim3 threadsPerBlock(8, 1, 1);
+	dim3 blocksPerGrid(4, 3, 2);
+	dim3 threadsPerBlock(1, 1, 1);
 	affine_decrypt << <blocksPerGrid, threadsPerBlock >> > ();
 
 	/* wait for all threads to complete */

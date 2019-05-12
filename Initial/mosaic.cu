@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
 		runCPU();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 
 		/* OPENMP */
@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
 		runOPENMP();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -169,14 +169,14 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 		/* CUDA */
 		readFile();
 		runCUDA();
 
 		// Save the output image file (from last executed mode)
-		/*switch (image_format) {
+		switch (image_format) {
 		case (PPM_BINARY): {
 			writeBinary();
 			break;
@@ -185,14 +185,13 @@ int main(int argc, char *argv[]) {
 			writePlainText();
 			break;
 		}
-		}*/
+		}
 
 		break;
 	}
 	}
 
 	freeMemory();
-	getchar();
 	return 0;
 }
 
@@ -284,10 +283,12 @@ void runCUDA()
 {
 	printf("\n=============== Start Run CUDA! ===============\n");
 	/* Set Clock */
-	cudaEvent_t start, stop;
+	cudaEvent_t start, start_core, stop, stop_core;
+	cudaEventCreate(&start_core);
+	cudaEventCreate(&stop_core);
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-	// Start Timing
+	// Start Timing Total
 	cudaEventRecord(start);
 
 	// TODO remember to change
@@ -373,26 +374,24 @@ void runCUDA()
 	cudaMemcpy(d_blue_data, blue_vector, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyHostToDevice);
 	// C
 	cudaMemcpy(d_c, &c, sizeof(unsigned int), cudaMemcpyHostToDevice);
-	//cudaMemcpy(d_sum_red_row, h_red_average, sizeof(unsigned long) * height, cudaMemcpyHostToDevice);
-	//cudaMemcpy(d_sum_green_row, h_green_average, sizeof(unsigned long) * height, cudaMemcpyHostToDevice);
-	//cudaMemcpy(d_sum_blue_row, h_blue_average, sizeof(unsigned long) * height, cudaMemcpyHostToDevice);
-	// Average
-	//cudaMemcpyToSymbol(red_average, &h_red_average, sizeof(unsigned long));
-	//cudaMemcpyToSymbol(green_average, &h_green_average, sizeof(unsigned long));
-	//cudaMemcpyToSymbol(blue_average, &h_blue_average, sizeof(unsigned long));
 	checkCUDAError("Input transfer to device");
 
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
 	// Single Block
 	dim3 blocksPerGrid(cell_per_column, 1, 1);
 	dim3 threadsPerBlock(cell_per_row, 1, 1);
-	//printf("%d-%d\n", cell_per_column, cell_per_row);
+	// Start Timing Core
+	cudaEventRecord(start_core);
 	assignCell <<< blocksPerGrid, threadsPerBlock, (cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*) + cell_per_row * sizeof(long*)) >>> (width, height, d_c, cell_per_row, d_red, d_green, d_blue, d_sum_red_row, d_sum_green_row, d_sum_blue_row);
-	cudaEventRecord(stop);
+	cudaEventRecord(stop_core);
 
 	/* Wait for All Threads to Complete */
 	cudaThreadSynchronize();
 	checkCUDAError("Kernel execution");
+	// Stop Timing Core
+	cudaEventSynchronize(stop_core);
+	float milliseconds_core = 0;
+	cudaEventElapsedTime(&milliseconds_core, start_core, stop_core);
 
 	/* Copy the GPU Output back to the Host */
 	cudaMemcpy(red_vector, d_red_data, sizeof(unsigned short) * pixel_per_column * pixel_per_row, cudaMemcpyDeviceToHost);
@@ -406,7 +405,6 @@ void runCUDA()
 	int green_average = 0;
 	int blue_average = 0;
 	for (int i = 0; i < cell_per_column; i++) {
-		//printf("%d: %d-%d-%d\n", i, h_red_average[i], h_green_average[i], h_blue_average[i]);
 		red_average += h_red_average[i];
 		green_average += h_green_average[i];
 		blue_average += h_blue_average[i];
@@ -444,20 +442,26 @@ void runCUDA()
 	free(h_blue_average);
 
 	// Stop Timing
+	cudaEventRecord(stop);
 	cudaEventSynchronize(stop);
 	float milliseconds = 0;
 	cudaEventElapsedTime(&milliseconds, start, stop);
 
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
+	cudaEventDestroy(start_core);
+	cudaEventDestroy(stop_core);
 
 	printf("|| CUDA Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| CUDA Mode Execution Time\n");
+	printf("|| CUDA Mode Total Execution Time\n");
 	printf("|| -- %.0f s\n", milliseconds / 1000.0);
 	printf("|| -- %.10f ms\n", milliseconds);
+	printf("|| CUDA Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", milliseconds_core / 1000.0);
+	printf("|| -- %.10f ms\n", milliseconds_core);
 	printf("=============== Stop Run CUDA! ===============\n");
 }
 
@@ -468,8 +472,8 @@ int runCPU()
 {
 	printf("\n=============== Start Run CPU! ===============\n");
 	/* Set Clock */
-	double begin_cpu, end_cpu;
-	// Start Timing
+	double begin_cpu, begin_cpu_core, end_cpu, end_cpu_core;
+	// Start Timing Total
 	begin_cpu = omp_get_wtime();
 
 	/* Initialise Average */
@@ -528,6 +532,8 @@ int runCPU()
 
 	cells = cells_per_row * cells_per_column;
 
+	// Start Timing Core
+	begin_cpu_core = omp_get_wtime();
 	for (i = 0; i < cells_per_column; i++) {
 		// loop cells in column
 
@@ -589,6 +595,8 @@ int runCPU()
 			}
 		}
 	}
+	// Stop Timing Core
+	end_cpu_core = omp_get_wtime();
 
 	// calculate all average pixel values
 	red_average_all /= (width * height);
@@ -600,15 +608,18 @@ int runCPU()
 	green_average = (unsigned short)green_average_all;
 	blue_average = (unsigned short)blue_average_all;
 
-	// Stop Timing
+	// Stop Timing Total
 	end_cpu = omp_get_wtime();
 	printf("|| CPU Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| CPU Mode Execution Time\n");
+	printf("|| CPU Mode Total Execution Time\n");
 	printf("|| -- %.0f s\n", (end_cpu - begin_cpu));
 	printf("|| -- %.5f ms\n", (end_cpu - begin_cpu)*1000.0);
+	printf("|| CPU Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", (end_cpu_core - begin_cpu_core));
+	printf("|| -- %.5f ms\n", (end_cpu_core - begin_cpu_core)*1000.0);
 	printf("=============== Stop Run CPU! ===============\n");
 	return 1;
 }
@@ -619,8 +630,8 @@ int runCPU()
 int runOPENMP() {
 	printf("\n=============== Start Run OPENMP! ===============\n");
 	/* Set Clock */
-	double begin_openmp, end_openmp;
-	// Start Timing
+	double begin_openmp, begin_openmp_core, end_openmp, end_openmp_core;
+	// Start Timing Total
 	begin_openmp = omp_get_wtime();
 
 	/* Initialise Average */
@@ -679,6 +690,8 @@ int runOPENMP() {
 
 	cells = cells_per_row * cells_per_column;
 
+	// Start Timing Core
+	begin_openmp_core = omp_get_wtime();
 #pragma omp parallel private (i, j, k, l, red_average_part, green_average_part, blue_average_part) 
 	{
 #pragma omp for schedule(dynamic)
@@ -744,6 +757,8 @@ int runOPENMP() {
 			}// end for (j)
 		}// end for (i)
 	}// end parallel
+	// Stop Timing Core
+	end_openmp_core = omp_get_wtime();
 
 	// calculate all average pixel values
 	red_average_all /= width * height;
@@ -755,15 +770,18 @@ int runOPENMP() {
 	green_average = (unsigned short)green_average_all;
 	blue_average = (unsigned short)blue_average_all;
 
-	// Stop Timing
+	// Stop Timing Total
 	end_openmp = omp_get_wtime();
 	printf("|| OPENMP Average Image Colour\n");
 	printf("|| -- red = %hu\n", red_average);
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
-	printf("|| OPENMP Mode Execution Time\n");
+	printf("|| OPENMP Mode Total Execution Time\n");
 	printf("|| -- %.0f s\n", (end_openmp - begin_openmp));
 	printf("|| -- %.5f ms\n", (end_openmp - begin_openmp)*1000.0);
+	printf("|| OPENMP Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", (end_openmp_core - begin_openmp_core));
+	printf("|| -- %.5f ms\n", (end_openmp_core - begin_openmp_core)*1000.0);
 	printf("=============== Stop Run OPENMP! ===============\n");
 	return 1;
 }

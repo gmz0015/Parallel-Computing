@@ -1,10 +1,14 @@
+#include "cuda_runtime.h"
+#include "device_launch_parameters.h"
+#include "cuda_texture_types.h"
+#include "texture_fetch_functions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <omp.h>
-#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
+#include <vector_types.h>
+#include <vector_functions.h>
 
 #define FAILURE 0
 #define SUCCESS !FAILURE
@@ -170,6 +174,7 @@ int main(int argc, char *argv[]) {
 
 		/* OPENMP */
 		readFile();
+		vec2matrix();
 		// calculate the average colour value
 		runOPENMP();
 
@@ -187,6 +192,7 @@ int main(int argc, char *argv[]) {
 
 		/* CUDA */
 		readFile();
+		vec2matrix();
 		runCUDA();
 
 		cellvec2matrix();
@@ -231,6 +237,8 @@ __device__ unsigned short d_red;
 __device__ unsigned short d_green;
 __device__ unsigned short d_blue;
 
+texture<unsigned long, cudaTextureType1D, cudaReadModeElementType> d_cell_index;
+
 __device__ int computeCell(unsigned long pixel_num, long start_point, long end_point, unsigned short *d_color) {
 	unsigned long average_pixel = 0;
 	int i, j;
@@ -245,7 +253,7 @@ __device__ int computeCell(unsigned long pixel_num, long start_point, long end_p
 	return average_return;
 }
 
-__global__ void assignCell(unsigned long *d_cell_vector_index, unsigned short *d_red_cell_vector, unsigned short *d_green_cell_vector, unsigned short *d_blue_cell_vector)
+__global__ void assignCell(unsigned short *d_red_cell_vector, unsigned short *d_green_cell_vector, unsigned short *d_blue_cell_vector)
 {
 	// blockIdx.x --- the row number of the cell
 	// blockIdx.y --- the column number of the cell
@@ -263,15 +271,24 @@ __global__ void assignCell(unsigned long *d_cell_vector_index, unsigned short *d
 	// change limitation width of the cell
 	unsigned short limitation_width = (blockIdx.y == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
 
-	long start_point = d_cell_vector_index[(blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2];
-	long end_point = d_cell_vector_index[1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2];
+	long start_point = tex1Dfetch(d_cell_index, (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
+	long end_point = tex1Dfetch(d_cell_index, 1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
 	long pixel_num = end_point - start_point;
 	
-	
-	atomicAdd(&d_red_sum_local[0], computeCell(pixel_num, start_point, end_point, d_red_cell_vector));
-	atomicAdd(&d_green_sum_local[0], computeCell(pixel_num, start_point, end_point, d_green_cell_vector));
-	atomicAdd(&d_blue_sum_local[0], computeCell(pixel_num, start_point, end_point, d_blue_cell_vector));
+	// Red
+	if (blockIdx.z == 0) {
+		atomicAdd(&d_red_sum_local[0], computeCell(pixel_num, start_point, end_point, d_red_cell_vector));
+	}
 
+	// Green
+	if (blockIdx.z == 1) {
+		atomicAdd(&d_green_sum_local[0], computeCell(pixel_num, start_point, end_point, d_green_cell_vector));
+	}
+
+	// Blue
+	if (blockIdx.z == 2) {
+		atomicAdd(&d_blue_sum_local[0], computeCell(pixel_num, start_point, end_point, d_blue_cell_vector));
+	}
 	//printf("%d-%d: %d-%d-%d\n", blockIdx.x, threadIdx.x, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
 	//printf("-- Global --- %d-%d: %d-%d-%d\n", threadIdx.x, threadIdx.y, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
 }
@@ -322,8 +339,8 @@ void runCUDA()
 	*h_blue_sum = 0;
 
 	/* Allocate Device Memory */
-	long d_cell_vector_size = sizeof(unsigned short) * width * height;
-	long d_cell_vector_index_size = sizeof(unsigned long) * cells_per_row * cells_per_column * 2;
+	unsigned long d_cell_vector_size = sizeof(unsigned short) * width * height;
+	unsigned long d_cell_vector_index_size = sizeof(unsigned long) * cells_per_row * cells_per_column * 2;
 	cudaMalloc((void **)&d_cell_vector_index, d_cell_vector_index_size);
 	// Red
 	cudaMalloc((void **)&d_red_cell_vector, d_cell_vector_size);
@@ -352,15 +369,18 @@ void runCUDA()
 	cudaMemcpyToSymbol(CELLS_PER_COLUMN, &cells_per_column, sizeof(unsigned short));
 	checkCUDAError("Input transfer to device");
 
+	cudaBindTexture(0, d_cell_index, d_cell_vector_index, d_cell_vector_index_size);
+	checkCUDAError("tex1D bind");
+
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
 	// Single Block
-	dim3 blocksPerGrid(cells_per_column, cells_per_row, 1);
+	dim3 blocksPerGrid(cells_per_column, cells_per_row, 3);
 	dim3 threadsPerBlock(1, 1, 1);
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
 	
 	// Start Timing Core
 	cudaEventRecord(start_core);
-	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_cell_vector_index, d_red_cell_vector, d_green_cell_vector, d_blue_cell_vector);
+	assignCell << < blocksPerGrid, threadsPerBlock >> > (d_red_cell_vector, d_green_cell_vector, d_blue_cell_vector);
 
 	/* Wait for All Threads to Complete */
 	cudaThreadSynchronize();
@@ -548,11 +568,11 @@ int runCPU()
 	printf("|| -- green = %hu\n", green_average);
 	printf("|| -- blue = %hu\n", blue_average);
 	printf("|| CPU Mode Total Execution Time\n");
-	printf("|| -- %.0f s\n", (end_cpu_core - begin_cpu_core));
-	printf("|| -- %.5f ms\n", (end_cpu_core - begin_cpu_core)*1000.0);
-	printf("|| CPU Mode Core Part Execution Time\n");
 	printf("|| -- %.0f s\n", (end_cpu - begin_cpu));
 	printf("|| -- %.5f ms\n", (end_cpu - begin_cpu)*1000.0);
+	printf("|| CPU Mode Core Part Execution Time\n");
+	printf("|| -- %.0f s\n", (end_cpu_core - begin_cpu_core));
+	printf("|| -- %.5f ms\n", (end_cpu_core - begin_cpu_core)*1000.0);
 	printf("=============== Stop Run CPU! ===============\n");
 	return 1;
 }

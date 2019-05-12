@@ -36,17 +36,17 @@ Within the initial version, I parallelise each mosaic cell by assigning the numb
 
 The consuming time of different approaches for the initial version is showed below.
 
-| Index | Mode     | Width x Height |    c    | The number of Cells in a row | Time                                           |
-| :---: | :------- | :------------: | :-----: | :--------------------------: | :--------------------------------------------- |
-|   1   | CPU      |  2048 x 2048   |    4    |             512              | 0s, 18.22ms                                    |
-|   2   | OPENMP   |  2048 x 2048   |    4    |             512              | 0s, 19.91ms                                    |
-|   3   | **CUDA** |  2048 x 2048   |  **4**  |           **512**            | <span style="color:red">**0s, 7.42ms**</span>  |
-|   4   | CPU      |  2048 x 2048   |   128   |              16              | 0s, 15.78ms                                    |
-|   5   | OPENMP   |  2048 x 2048   |   128   |              16              | 0s, 16.08ms                                    |
-|   6   | **CUDA** |  2048 x 2048   | **128** |            **16**            | <span style="color:red">**0s, 23.63ms**</span> |
-|   7   | CPU      |  2048 x 2048   |   256   |              8               | 0s, 17.09ms                                    |
-|   8   | OPENMP   |  2048 x 2048   |   256   |              8               | 0s, 16.68ms                                    |
-|   9   | **CUDA** |  2048 x 2048   | **256** |            **8**             | <span style="color:red">**0s, 67.91ms**</span> |
+| Index | Mode     | Width x Height |    c    | The number of Cells | Total Time                                     | Core Time                                      |
+| :---: | :------- | :------------: | :-----: | :-----------------: | :--------------------------------------------- | ---------------------------------------------- |
+|   1   | CPU      |  2048 x 2048   |    4    |      512 x 512      | 0s, 19.30ms                                    | 0s, 19.30ms                                    |
+|   2   | OPENMP   |  2048 x 2048   |    4    |      512 x 512      | 0s, 18.89ms                                    | 0s, 18.89ms                                    |
+|   3   | **CUDA** |  2048 x 2048   |  **4**  |    **512 x 512**    | <span style="color:red">**0s, 26.05ms**</span> | <span style="color:red">**0s, 2.25ms**</span>  |
+|   4   | CPU      |  2048 x 2048   |   128   |       16 x 16       | 0s, 16.66ms                                    | 0s, 16.66ms                                    |
+|   5   | OPENMP   |  2048 x 2048   |   128   |       16 x 16       | 0s, 15.54ms                                    | 0s, 15.54ms                                    |
+|   6   | **CUDA** |  2048 x 2048   | **128** |     **16 x 16**     | <span style="color:red">**0s, 36.48ms**</span> | <span style="color:red">**0s, 12.84ms**</span> |
+|   7   | CPU      |  2048 x 2048   |   256   |        8 x 8        | 0s, 16.66ms                                    | 0s, 16.66ms                                    |
+|   8   | OPENMP   |  2048 x 2048   |   256   |        8 x 8        | 0s, 16.22ms                                    | 0s, 16.22ms                                    |
+|   9   | **CUDA** |  2048 x 2048   | **256** |      **8 x 8**      | <span style="color:red">**0s, 86.50ms**</span> | <span style="color:red">**0s, 63.17ms**</span> |
 
 
 

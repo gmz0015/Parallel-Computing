@@ -10,7 +10,7 @@ void checkCUDAError(const char*);
 
 
 __device__ void modulo() {
-	printf("%d-%d-%d --- %d-%d-%d --- %d-%d-%d --- %d-%d-%d\n", threadIdx.x, threadIdx.y, threadIdx.z, blockIdx.x, blockIdx.y, blockIdx.z, blockDim.x, blockDim.y, blockDim.z, gridDim.x, gridDim.y, gridDim.z);
+	printf("%d: %d-%d-%d --- %d-%d-%d --- %d-%d-%d --- %d-%d-%d\n", str, threadIdx.x, threadIdx.y, threadIdx.z, blockIdx.x, blockIdx.y, blockIdx.z, blockDim.x, blockDim.y, blockDim.z, gridDim.x, gridDim.y, gridDim.z);
 }
 
 __constant__ int d_c;

@@ -256,8 +256,8 @@ __global__ void assignCell(unsigned short *d_red_cell_vector, unsigned short *d_
 {
 	// blockIdx.x --- the row number of the cell
 	// blockIdx.y --- the column number of the cell
-	long start_point = tex1Dfetch(d_cell_index, (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
-	long end_point = tex1Dfetch(d_cell_index, 1 + (blockIdx.x * CELLS_PER_COLUMN + blockIdx.y) * 2);
+	long start_point = tex1Dfetch(d_cell_index, (blockIdx.x * CELLS_PER_COLUMN + threadIdx.x) * 2);
+	long end_point = tex1Dfetch(d_cell_index, 1 + (blockIdx.x * CELLS_PER_COLUMN + threadIdx.x) * 2);
 	long pixel_num = end_point - start_point;
 	// convert global data pointer to the local pointer of this block
 
@@ -274,17 +274,17 @@ __global__ void assignCell(unsigned short *d_red_cell_vector, unsigned short *d_
 	unsigned short limitation_width = (blockIdx.y == QUOTIENT_ROW) ? REMAINDER_ROW : D_C;
 
 	// Red
-	if (blockIdx.z == 0) {
+	if (blockIdx.y == 0) {
 		computeCell(pixel_num, start_point, end_point, d_red_cell_vector, d_red_sum_local);
 	}
 
 	// Green
-	if (blockIdx.z == 1) {
+	if (blockIdx.y == 1) {
 		computeCell(pixel_num, start_point, end_point, d_green_cell_vector, d_green_sum_local);
 	}
 
 	// Blue
-	if (blockIdx.z == 2) {
+	if (blockIdx.y == 2) {
 		computeCell(pixel_num, start_point, end_point, d_blue_cell_vector, d_blue_sum_local);
 	}
 	//printf("%d-%d: %d-%d-%d\n", blockIdx.x, threadIdx.x, d_sum_red_row[blockIdx.x], d_sum_green_row[blockIdx.x], d_sum_blue_row[blockIdx.x]);
@@ -372,8 +372,8 @@ void runCUDA()
 
 	/* Configure the Grid of Thread Blocks and Run the GPU Kernel */
 	// Single Block
-	dim3 blocksPerGrid(cells_per_column, cells_per_row, 3);
-	dim3 threadsPerBlock(1, 1, 1);
+	dim3 blocksPerGrid(cells_per_column, 3, 1);
+	dim3 threadsPerBlock(cells_per_row, 1, 1);
 	//printf("%d-%d\n", cell_per_column, cell_per_row);
 
 	// Start Timing Core

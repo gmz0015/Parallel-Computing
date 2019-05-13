@@ -62,6 +62,16 @@ A1: Obviously, GPU performs very well at parallel computing and the timing resul
 
 A2: Because I store all variables at global memory except the sum of each row's value stored in share memory, this may consume more time on addressing the location of an element.  [IMPROVEMENT - using constant and texture] In addition, since I just sum the pixel values of a row in each block, it means that I need to use another loop to sum them to get an average value of the overall picture.[IMPROVEMENT - using pointer]
 
+
+
+### 2.2 Optimisation
+
+#### 2.2.1 Overview
+
+#### 2.2.2 Result
+
+#### 2.2.3 Discussion
+
 ## 3 Limitations
 
 ## DELETE BEFORE SUBMIT

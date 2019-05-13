@@ -66,9 +66,17 @@ unsigned short height = 0; // store height
 unsigned short max_color_value = 0; // store maximum color value
 
 /* pixel value - Vector */
-unsigned short *red_vector; // global red values (two dimension[height][width])
-unsigned short *green_vector; // global green values (two dimension[height][width])
-unsigned short *blue_vector; // global blue values (two dimension[height][width])
+struct pixel_vector {
+	unsigned short *red_vector;
+	unsigned short *green_vector;
+	unsigned short *blue_vector;
+};
+
+typedef struct pixel_vector pixel_vector;
+pixel_vector *color_vector;
+//unsigned short *red_vector; // global red values (two dimension[height][width])
+//unsigned short *green_vector; // global green values (two dimension[height][width])
+//unsigned short *blue_vector; // global blue values (two dimension[height][width])
 
 /* pixel value - Matrix */
 unsigned short **red; // global red values (two dimension[height][width])
@@ -888,22 +896,22 @@ int readFile() {
 
 		// assign value for arrays
 		for (int i = 0; i < width * height; i++) {
-			if (fscanf(f, "%hu %hu %hu", &red_vector[i], &green_vector[i], &blue_vector[i])) {
+			if (fscanf(f, "%hu %hu %hu", &color_vector->red_vector[i], &color_vector->green_vector[i], &color_vector->blue_vector[i])) {
 				tempWidth--;
 				tempHeight--;
-				if ((red_vector[i] < 0) && (red_vector[i] > max_color_value)) {
+				if ((color_vector->red_vector[i] < 0) && (color_vector->red_vector[i] > max_color_value)) {
 					printf("=============== Stop Read Input File! ===============\n");
 					fprintf(stderr, "Input file is broken. The value of red pixel is wrong.\n");
 					printf("=====================================================\n");
 					exit(1);
 				}
-				if ((green_vector[i] < 0) && (green_vector[i] > max_color_value)) {
+				if ((color_vector->green_vector[i] < 0) && (color_vector->green_vector[i] > max_color_value)) {
 					printf("=============== Stop Read Input File! ===============\n");
 					fprintf(stderr, "Input file is broken. The value of green pixel is wrong.\n");
 					printf("=====================================================\n");
 					exit(1);
 				}
-				if ((blue_vector[i] < 0) && (blue_vector[i] > max_color_value)) {
+				if ((color_vector->blue_vector[i] < 0) && (color_vector->blue_vector[i] > max_color_value)) {
 					printf("=============== Stop Read Input File! ===============\n");
 					fprintf(stderr, "Input file is broken. The value of blue pixel is wrong.\n");
 					printf("=====================================================\n");
@@ -974,9 +982,9 @@ int readFile() {
 
 		// read in red, green and blue into 3 arrays.
 		for (i = 0; i < height * width; i++) {
-			red_vector[i] = *(color_temp + i * 3);
-			green_vector[i] = *(color_temp + i * 3 + 1);
-			blue_vector[i] = *(color_temp + i * 3 + 2);
+			color_vector->red_vector[i] = *(color_temp + i * 3);
+			color_vector->green_vector[i] = *(color_temp + i * 3 + 1);
+			color_vector->blue_vector[i] = *(color_temp + i * 3 + 2);
 		}
 		printf("=============== Read Binary File is Finished! ===============\n");
 		free(color_temp);
@@ -1008,9 +1016,10 @@ int allocateMemory() {
 	for (int i = 0; i < height; i++)
 		blue[i] = (unsigned short *)malloc(sizeof(unsigned short) * width);
 
-	red_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
-	green_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
-	blue_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+	color_vector = (pixel_vector*)malloc(sizeof(pixel_vector));
+	color_vector->red_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+	color_vector->green_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
+	color_vector->blue_vector = (unsigned short *)malloc(sizeof(unsigned short) * width * height);
 
 	return 1;
 }
@@ -1061,9 +1070,9 @@ void vec2matrix()
 	int k = 0;
 	for (int i = 0; i < height; i++) {
 		for (int j = 0; j < width; j++) {
-			red[i][j] = red_vector[k];
-			green[i][j] = green_vector[k];
-			blue[i][j] = blue_vector[k];
+			red[i][j] = color_vector->red_vector[k];
+			green[i][j] = color_vector->green_vector[k];
+			blue[i][j] = color_vector->blue_vector[k];
 			k++;
 		}
 	}
@@ -1268,9 +1277,9 @@ int freeMemory() {
 		free(blue[i]);
 	free(blue);
 
-	free(red_vector);
-	free(green_vector);
-	free(blue_vector);
+	//free(red_vector);
+	//free(green_vector);
+	//free(blue_vector);
 
 	free(red_cell_vector);
 	free(green_cell_vector);

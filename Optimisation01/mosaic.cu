@@ -1015,34 +1015,6 @@ int allocateMemory() {
 	return 1;
 }
 
-int allocateCUDAMemory(unsigned short **d_red_input, unsigned short **d_red_output, unsigned short **d_green_input, unsigned short **d_green_output, unsigned short **d_blue_input, unsigned short **d_blue_output) {
-	/* Red */
-	cudaMalloc((void ***)&d_red_input, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_red_input[i], sizeof(unsigned short) * width);
-	cudaMalloc((void ***)&d_red_output, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_red_output[i], sizeof(unsigned short) * width);
-
-	/* Green */
-	cudaMalloc((void ***)&d_green_input, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_green_input[i], sizeof(unsigned short) * width);
-	cudaMalloc((void ***)&d_green_output, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_green_output[i], sizeof(unsigned short) * width);
-
-	/* Blue */
-	cudaMalloc((void ***)&d_blue_input, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_blue_input[i], sizeof(unsigned short) * width);
-	cudaMalloc((void ***)&d_blue_output, sizeof(unsigned short *) * height);
-	for (int i = 0; i < height; i++)
-		cudaMalloc((void **)&d_blue_output[i], sizeof(unsigned short) * width);
-
-	return 1;
-}
-
 void checkCUDAError(const char *msg)
 {
 	cudaError_t err = cudaGetLastError();

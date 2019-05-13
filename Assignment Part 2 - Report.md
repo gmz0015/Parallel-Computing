@@ -52,7 +52,7 @@ The consuming time of different approaches for the initial version is showed bel
 
 #### 2.1.3 Discussion
 
-##### Q1: The reason for consuming more time with the increase of c value.
+Q1: The reason for consuming more time with the increase of c value.
 
 A1: Obviously, GPU performs very well at parallel computing and the timing results also prove it. Since each thread process a cell, there will be less calculation within a thread if c value is small which means that it will fully use the advantages of GPU and consumes less time. [IMPROVEMENT - unrelated c]
 
@@ -70,7 +70,21 @@ A2: Because I store all variables at global memory except the sum of each row's 
 
 #### 2.2.2 Result
 
+| Index | Mode     | Width x Height |    c    | The number of Cells | Total Time                                     | Core Time                                     |
+| :---: | :------- | :------------: | :-----: | :-----------------: | :--------------------------------------------- | --------------------------------------------- |
+|   1   | CPU      |  2048 x 2048   |    4    |      512 x 512      | 0s, 19.39ms                                    | 0s, 19.39ms                                   |
+|   2   | OPENMP   |  2048 x 2048   |    4    |      512 x 512      | 0s, 19.19ms                                    | 0s, 19.19ms                                   |
+|   3   | **CUDA** |  2048 x 2048   |  **4**  |    **512 x 512**    | <span style="color:red">**0s, 13.68ms**</span> | <span style="color:red">**0s, 1.64ms**</span> |
+|   4   | CPU      |  2048 x 2048   |   128   |       16 x 16       | 0s, 16.23ms                                    | 0s, 16.23ms                                   |
+|   5   | OPENMP   |  2048 x 2048   |   128   |       16 x 16       | 0s, 18.86ms                                    | 0s, 18.86ms                                   |
+|   6   | **CUDA** |  2048 x 2048   | **128** |     **16 x 16**     | <span style="color:red">**0s, 14.97ms**</span> | <span style="color:red">**0s, 3.30ms**</span> |
+|   7   | CPU      |  2048 x 2048   |   256   |        8 x 8        | 0s, 17.65ms                                    | 0s, 17.65ms                                   |
+|   8   | OPENMP   |  2048 x 2048   |   256   |        8 x 8        | 0s, 17.81ms                                    | 0s, 17.81ms                                   |
+|   9   | **CUDA** |  2048 x 2048   | **256** |      **8 x 8**      | <span style="color:red">**0s, 21.16ms**</span> | <span style="color:red">**0s, 8.72ms**</span> |
+
 #### 2.2.3 Discussion
+
+##### Q1: Sometimes the 
 
 ## 3 Limitations
 
